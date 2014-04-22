@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2014 Igalia S.L.
+#  Carlos Alberto Lopez Perez <clopez@igalia.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+import json
+import os
+from collections import OrderedDict
+import sys
+import argparse
+
+
+extrahelp = '''
+The meaning of the possible results for a test on a revision is:
+
+    "UNKNOWN" means that we have no data for that revision. This means that
+    the bot didn't ran the test for this revision. This could have been
+    caused by a compilation failure on that revision, or could have been
+    that the bot skipped that revision because of the size of the build queue
+    at that moment, or maybe the bot was offline.... etc.
+
+
+    "MATCHEXPECT" means that the test was ran as expected. This usually means one of this four options:
+    - The test executed without failure (if the test was not flagged on TestExpectations).
+    - The test gave the failure expected on TestExpectations.
+    - The test didn't existed by that revision.
+    - The test was marked to be skipped.
+
+
+    "IMAGE" means ImageOnlyFailure
+
+    "MISSING" means Missing results.
+
+    "PASS" means the test passed (this is usually bad. It means that the test was not expected to pass according to TestExpectations)
+
+    "TEXT" means text failure.
+
+    "CRASH" means the test crashed.
+
+    "AUDIO" means audio failure
+
+    "FAIL" means failure
+'''
+
+
+def iprint(firstrev,lastrev,result,usecolor,unknown,matchexpected):
+
+    if lastrev == None:
+        startstr=("r%d" %firstrev)
+    else:
+        startstr=("[r%d-r%d]" %(firstrev,lastrev))
+
+    startcolor=''
+    endcolor=''
+    if usecolor:
+        if result != unknown and result != matchexpected:
+            # Red
+            startcolor='\033[0;31m'
+        elif result == matchexpected:
+            # Green
+            startcolor='\033[0;32m'
+        endcolor='\033[0m'
+
+    print('%s%s%s%s%s' %(startcolor,startstr," "*(30-len(startstr)),result,endcolor))
+
+
+
+
+def main(test, debug, detail, ignoreunknown, usecolor):
+    resultsfortests = {}
+    resultsfortests[test]=OrderedDict()
+    testparts=test.split('/')
+    if len(testparts) < 2 or "." not in testparts[len(testparts)-1]:
+        raise ValueError("Test should be in the format path/test.html. Only one test accepted as parameter (no wildcards or directories)")
+    bot="GTK_Linux_64-bit_Release"
+    jsonresults=os.listdir('jsonresults')
+    jsonresults.sort()
+
+    if ignoreunknown:
+        matchexpected="MATCHEXPECT/UNKNOWN"
+        unknown=matchexpected
+    else:
+        matchexpected="MATCHEXPECT"
+        unknown="UNKNOWN"
+
+    for jsonresult in jsonresults:
+        if jsonresult.startswith(bot+"_full_results_") and jsonresult.endswith('.json'):
+            (revision, buildnumber) = jsonresult.split(bot+"_full_results_")[1].split(".json")[0].split('_')
+            revision=int(revision.strip('r'))
+            buildnumber=int(buildnumber.strip('b'))
+            # Read file
+            json_file=open(os.path.join('jsonresults', jsonresult))
+            json_data=json_file.read()
+            json_file.close()
+            # Clean it
+            json_data=json_data.split('ADD_RESULTS(')[1]
+            json_data=json_data.split(');')[0]
+            # Parse it
+            json_parsed = json.loads(json_data)
+            # Sanity check
+            if int(json_parsed['revision']) != revision:
+                if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
+                revision=int(json_parsed['revision'])
+
+            if revision in resultsfortests[test]:
+                if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
+
+            keytest=json_parsed['tests']
+            try:
+                for testpart in testparts:
+                    keytest=keytest[testpart]
+            except KeyError:
+                # This test didn't failed (or wasn't ran) on this rev.
+                resultsfortests[test][revision]=matchexpected
+                continue
+
+            resultsfortests[test][revision]=keytest['actual']
+
+
+    print ("Results for test: %s\n" %test)
+    minrev=list(resultsfortests[test].keys())[0]
+    maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
+    if debug: print ("minrev es %d y maxrev %d" %(minrev,maxrev))
+    lastprinted=unknown
+    lastrevprinted=0
+    # trick to end the print the last interval on the loop.
+    resultsfortests[test][maxrev+1]='END'
+    for revision in range(minrev,maxrev+2):
+        if revision in resultsfortests[test]:
+            toprint=resultsfortests[test][revision]
+        else:
+                toprint=unknown
+        if lastprinted==toprint:
+            continue
+        else:
+            if detail or (lastprinted != unknown and lastprinted != matchexpected):
+                if revision-lastrevprinted > 2:
+                        iprint (lastrevprinted+1,revision-1,lastprinted,usecolor,unknown,matchexpected)
+                else:
+                    iprint (revision-1,None,lastprinted,usecolor,unknown,matchexpected)
+            lastrevprinted=revision-1
+            lastprinted=toprint
+    print("\n")
+    return 0
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--debug", help="print debug messages", action="store_true")
+    parser.add_argument("--onlyprinterr", help="Don't print MATCHEXPECT or UNKNOWN results", action="store_true")
+    parser.add_argument("--tellunknown", help="If set, will differentiate UNKNOWN (no data) from MATCHEXPECT. Otherwise will join both results", action="store_true")
+    parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
+    parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests)")
+    args = parser.parse_args()
+
+    if args.debug: debug = True
+    else: debug = False
+    if args.onlyprinterr: detail = False
+    else: detail = True
+    if args.tellunknown: ignoreunknown = False
+    else: ignoreunknown = True
+    if args.nocolor: usecolor = False
+    else: usecolor = True
+
+    main(args.test_name, debug, detail, ignoreunknown, usecolor)
+
