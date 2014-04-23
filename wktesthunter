@@ -26,6 +26,16 @@ import argparse
 
 
 extrahelp = '''
+About the colors:
+
+    - A red color means that the test result and the expectation didn't matched.
+    - A green color means that the test result was expected.
+    - No color means UNKNOWN (no data)
+
+    * To understand this better, run with --showexpected to check what was
+      the expectation for that test at the moment.
+
+
 The meaning of the possible results for a test on a revision is:
 
     "UNKNOWN" means that we have no data for that revision. This means that
@@ -46,7 +56,9 @@ The meaning of the possible results for a test on a revision is:
 
     "MISSING" means Missing results.
 
-    "PASS" means the test passed (this is usually bad. It means that the test was not expected to pass according to TestExpectations)
+    "PASS" means the test passed. This can be bad (if the color is red means that the test
+     was not expected to pass according to TestExpectations).
+     Run with --showexpected to check what was the expectation for that test at the moment.
 
     "TEXT" means text failure.
 
@@ -55,6 +67,12 @@ The meaning of the possible results for a test on a revision is:
     "AUDIO" means audio failure
 
     "FAIL" means failure
+
+Note for lazy people:
+
+    * As an extra goodie from python's argparse, the parameters can be shorted to any length
+      meanwhile there is no possible confusion between them. For example, you can use any of
+      "--showexpected", "--show" or "--s"; or you can use "--tellunknown", "--tell" or "--t"
 '''
 
 
@@ -127,7 +145,7 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
                 continue
 
             resultsfortests[test][revision]['result']=keytest['actual']
-            if showexpected and 'expected' in keytest:
+            if 'expected' in keytest:
                 resultsfortests[test][revision]['expected']=keytest['expected']
 
 
@@ -155,11 +173,19 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
                 if usecolor:
                     # We are going to print. Choose the color
                     if lastprinted != unknown and lastprinted != matchexpected:
-                        # red
-                        color='\033[0;31m'
+                        color='\033[0;31m' # red
                     elif lastprinted == matchexpected:
-                        # green
-                        color='\033[0;32m'
+                        color='\033[0;32m' # green
+                    try:
+                        if 'expected' in resultsfortests[test][revision-1]:
+                            for value in resultsfortests[test][revision-1]['result'].split(" "):
+                                if value in resultsfortests[test][revision-1]['expected']:
+                                    color='\033[0;32m' # green
+                                    if debug: print ("INFO: Marking test % as green on rev r%d, because actual value \"%s\" is in expected \"%s\" "
+                                        %(test,revision-1,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
+                    # This means we are going to print an unknown interval
+                    except KeyError:
+                        pass
 
                 if revision-lastrevprinted > 2:
                         iprint (lastrevprinted+1,revision-1,lastprinted,color)
