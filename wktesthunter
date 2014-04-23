@@ -58,23 +58,18 @@ The meaning of the possible results for a test on a revision is:
 '''
 
 
-def iprint(firstrev,lastrev,result,usecolor,unknown,matchexpected):
+def iprint(firstrev,lastrev,result,startcolor):
 
     if lastrev == None:
         startstr=("r%d" %firstrev)
     else:
         startstr=("[r%d-r%d]" %(firstrev,lastrev))
 
-    startcolor=''
-    endcolor=''
-    if usecolor:
-        if result != unknown and result != matchexpected:
-            # Red
-            startcolor='\033[0;31m'
-        elif result == matchexpected:
-            # Green
-            startcolor='\033[0;32m'
+    if startcolor != None:
         endcolor='\033[0m'
+    else:
+        endcolor=''
+        startcolor=''
 
     print('%s%s%s%s%s' %(startcolor,startstr," "*(30-len(startstr)),result,endcolor))
 
@@ -156,10 +151,20 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
             continue
         else:
             if detail or (lastprinted != unknown and lastprinted != matchexpected):
+                color=None
+                if usecolor:
+                    # We are going to print. Choose the color
+                    if lastprinted != unknown and lastprinted != matchexpected:
+                        # red
+                        color='\033[0;31m'
+                    elif lastprinted == matchexpected:
+                        # green
+                        color='\033[0;32m'
+
                 if revision-lastrevprinted > 2:
-                        iprint (lastrevprinted+1,revision-1,lastprinted,usecolor,unknown,matchexpected)
+                        iprint (lastrevprinted+1,revision-1,lastprinted,color)
                 else:
-                    iprint (revision-1,None,lastprinted,usecolor,unknown,matchexpected)
+                    iprint (revision-1,None,lastprinted,color)
             lastrevprinted=revision-1
             lastprinted=toprint
     print("\n")
