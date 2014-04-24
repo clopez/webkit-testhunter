@@ -82,7 +82,7 @@ Note for lazy people:
 
     * As an extra goodie from python's argparse, the parameters can be shorted to any length
       meanwhile there is no possible confusion between them. For example, you can use any of
-      "--showexpected", "--show" or "--s"; or you can use "--tellunknown", "--tell" or "--t"
+      "--showexpected", "--show" or "--s"; or you can use "--mergeunknown", "--merge" or "--m"
 '''
 
 
@@ -104,7 +104,7 @@ def iprint(firstrev,lastrev,result,startcolor):
 
 
 
-def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
+def main(test, debug, detail, mergeunknown, showexpected, usecolor):
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
@@ -114,7 +114,7 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
     jsonresults=os.listdir('jsonresults')
     jsonresults.sort()
 
-    if ignoreunknown:
+    if mergeunknown:
         noerror="NOERROR/UNKNOWN"
         unknown=noerror
     else:
@@ -211,9 +211,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--debug", help="Print debug messages.", action="store_true")
     parser.add_argument("--onlyprinterr", help="Don't print NOERROR or UNKNOWN results.", action="store_true")
-    parser.add_argument("--tellunknown", help="If set, will differentiate UNKNOWN (no data for this revision)\n"
-                                        "from NOERROR (we have data, but no error/result was reported).\n"
-                                        "Otherwise (flag not set) will join both results.", action="store_true")
+    parser.add_argument("--mergeunknown", help="If set, will differentiate UNKNOWN (no data for this revision)\n"
+                                          "from NOERROR (we have data, but no error/result was reported).\n"
+                                          "Otherwise (flag not set) will join both results.", action="store_true")
     parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
@@ -223,12 +223,12 @@ if __name__ == '__main__':
     else: debug = False
     if args.onlyprinterr: detail = False
     else: detail = True
-    if args.tellunknown: ignoreunknown = False
-    else: ignoreunknown = True
+    if args.mergeunknown: mergeunknown = True
+    else: mergeunknown = False
     if args.showexpected: showexpected = True
     else: showexpected = False
     if args.nocolor: usecolor = False
     else: usecolor = True
 
-    main(args.test_name, debug, detail, ignoreunknown, showexpected, usecolor)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor)
 
