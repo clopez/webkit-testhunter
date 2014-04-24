@@ -30,4 +30,4 @@ the json files.
     and pay attention to the intervals surrounding the failure.
 
 * Check `./wktesthunter -h` for additional help.
-* Note: it runs faster with python3.
+* Note: This runs faster with python3. (will use it by default if is installed)

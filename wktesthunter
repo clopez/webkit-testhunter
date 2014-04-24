@@ -18,12 +18,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import json
-import os
-from collections import OrderedDict
+# Run with python3 if available (is faster)
 import sys
-import argparse
+import os
+try:
+    if sys.version_info[0] < 3:
+        os.execvp('python3', ['python3', __file__] + sys.argv[1:])
+except:
+    # No python3 :(
+    pass
 
+import json
+import argparse
+from collections import OrderedDict
 
 extrahelp = '''
 About the colors:
