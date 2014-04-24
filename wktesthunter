@@ -60,7 +60,7 @@ The meaning of the possible results for a test on a revision is:
     This usually means one of this four options:
     - The test executed without failure (if the test was not flagged on TestExpectations).
     - The test gave the failure expected on TestExpectations.
-    - The test didn't existed by that revision.
+    - The test didn't exist by that revision.
     - The test was marked to be skipped.
 
 
@@ -184,16 +184,14 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                 color=None
                 if usecolor:
                     # We are going to print. Choose the color
-                    if lastprinted != unknown and lastprinted != noerror:
-                        color='\033[0;31m' # red
-                    elif lastprinted == noerror:
+                    if lastprinted != unknown:
                         color='\033[0;32m' # green
                     try:
                         if 'expected' in resultsfortests[test][revision-1]:
                             for value in resultsfortests[test][revision-1]['result'].split(" "):
-                                if ( (value in resultsfortests[test][revision-1]['expected']) or # we check also for "[TEXT|IMAGE+TEXT|AUDIO]==FAIL"
-                                     ( (value in ('TEXT', 'IMAGE+TEXT', 'AUDIO')) and ('FAIL' in resultsfortests[test][revision-1]['expected']) ) ):
-                                    color='\033[0;32m' # green
+                                if ( (value not in resultsfortests[test][revision-1]['expected']) and # we check also for "[TEXT|IMAGE+TEXT|AUDIO]==FAIL"
+                                     ( (value not in ('TEXT', 'IMAGE+TEXT', 'AUDIO')) or ('FAIL' not in resultsfortests[test][revision-1]['expected']) ) ):
+                                    color='\033[0;31m' # red
                                     if debug: print ("INFO: Marking test % as green on rev r%d, because actual value \"%s\" is in expected \"%s\" "
                                         %(test,revision-1,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
                     # This means we are going to print an unknown interval
@@ -230,7 +228,7 @@ if __name__ == '__main__':
     else: detail = True
     if args.mergeunknown: mergeunknown = True
     else: mergeunknown = False
-    if args.ignoreunknown: ignoreunknown = True; mergeunknown = False
+    if args.ignoreunknown: ignoreunknown = True;
     else: ignoreunknown = False
     if args.showexpected: showexpected = True
     else: showexpected = False
