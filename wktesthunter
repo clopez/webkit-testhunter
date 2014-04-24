@@ -59,8 +59,7 @@ The meaning of the possible results for a test on a revision is:
     specific problem was reported with this test.
     This usually means one of this four options:
     - The test executed without failure (if the test was not flagged on TestExpectations).
-    - The test gave the failure expected on TestExpectations.
-    - The test didn't existed by that revision.
+    - The test didn't exist by that revision.
     - The test was marked to be skipped.
 
 
@@ -184,7 +183,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                 color=None
                 if usecolor:
                     # We are going to print. Choose the color
-                    if lastprinted != unknown:
+                    if lastprinted not in (noerror, unknown):
                         color='\033[0;32m' # green
                     try:
                         if 'expected' in resultsfortests[test][revision-1]:
