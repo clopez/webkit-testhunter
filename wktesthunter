@@ -60,7 +60,7 @@ The meaning of the possible results for a test on a revision is:
     This usually means one of this four options:
     - The test executed without failure (if the test was not flagged on TestExpectations).
     - The test gave the failure expected on TestExpectations.
-    - The test didn't existed by that revision.
+    - The test didn't exist by that revision.
     - The test was marked to be skipped.
 
 
