@@ -45,7 +45,10 @@ The meaning of the possible results for a test on a revision is:
     at that moment, or maybe the bot was offline.... etc.
 
 
-    "MATCHEXPECT" means that the test was ran as expected. This usually means one of this four options:
+    "NOERROR" means that we don't know the exactly result of this test on that revision,
+    but we know that the complete set of layout tests finished on that revision and no
+    specific problem was reported with this test.
+    This usually means one of this four options:
     - The test executed without failure (if the test was not flagged on TestExpectations).
     - The test gave the failure expected on TestExpectations.
     - The test didn't existed by that revision.
@@ -105,10 +108,10 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
     jsonresults.sort()
 
     if ignoreunknown:
-        matchexpected="MATCHEXPECT/UNKNOWN"
-        unknown=matchexpected
+        noerror="NOERROR/UNKNOWN"
+        unknown=noerror
     else:
-        matchexpected="MATCHEXPECT"
+        noerror="NOERROR"
         unknown="UNKNOWN"
 
     for jsonresult in jsonresults:
@@ -141,7 +144,7 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
                     keytest=keytest[testpart]
             except KeyError:
                 # This test didn't failed (or wasn't ran) on this rev.
-                resultsfortests[test][revision]['result']=matchexpected
+                resultsfortests[test][revision]['result']=noerror
                 continue
 
             resultsfortests[test][revision]['result']=keytest['actual']
@@ -168,13 +171,13 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
         if lastprinted==toprint:
             continue
         else:
-            if detail or (lastprinted != unknown and lastprinted != matchexpected):
+            if detail or (lastprinted != unknown and lastprinted != noerror):
                 color=None
                 if usecolor:
                     # We are going to print. Choose the color
-                    if lastprinted != unknown and lastprinted != matchexpected:
+                    if lastprinted != unknown and lastprinted != noerror:
                         color='\033[0;31m' # red
-                    elif lastprinted == matchexpected:
+                    elif lastprinted == noerror:
                         color='\033[0;32m' # green
                     try:
                         if 'expected' in resultsfortests[test][revision-1]:
@@ -199,12 +202,14 @@ def main(test, debug, detail, ignoreunknown, showexpected, usecolor):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--debug", help="print debug messages", action="store_true")
-    parser.add_argument("--onlyprinterr", help="Don't print MATCHEXPECT or UNKNOWN results", action="store_true")
-    parser.add_argument("--tellunknown", help="If set, will differentiate UNKNOWN (no data) from MATCHEXPECT. Otherwise will join both results", action="store_true")
-    parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result", action="store_true")
+    parser.add_argument("--debug", help="Print debug messages.", action="store_true")
+    parser.add_argument("--onlyprinterr", help="Don't print NOERROR or UNKNOWN results.", action="store_true")
+    parser.add_argument("--tellunknown", help="If set, will differentiate UNKNOWN (no data for this revision)\n"
+                                        "from NOERROR (we have data, but no error/result was reported).\n"
+                                        "Otherwise (flag not set) will join both results.", action="store_true")
+    parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
-    parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests)")
+    parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
     args = parser.parse_args()
 
     if args.debug: debug = True
