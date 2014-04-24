@@ -212,9 +212,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--debug", help="Print debug messages.", action="store_true")
     parser.add_argument("--onlyprinterr", help="Don't print NOERROR or UNKNOWN results.", action="store_true")
-    parser.add_argument("--mergeunknown", help="If set, will differentiate UNKNOWN (no data for this revision)\n"
-                                          "from NOERROR (we have data, but no error/result was reported).\n"
-                                          "Otherwise (flag not set) will join both results.", action="store_true")
+    parser.add_argument("--mergeunknown", help="If set, will join the UNKNOWN results (no data for this revision)\n"
+                                               "with the NOERROR results (we have data, but no error/result was reported).\n", action="store_true")
     parser.add_argument("--ignoreunknown", help="If set, will not print UNKNOWN (no data for this revision)\n"
                                           "This option disregards --mergeunknown.\n", action="store_true")
     parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")

@@ -24,10 +24,7 @@ the json files.
 
 * Typical usage:
 
-  * Execute first `./wktesthunter testdir/testname.html`  to get a broad
-    view of where the failure started.
-  * Execute later `./wktesthunter testdir/testname.html --tellunknown`
-    and pay attention to the intervals surrounding the failure.
+  * `./wktesthunter testdir/testname.html`
 
 * Check `./wktesthunter -h` for additional help.
 * Note: This runs faster with python3. (will use it by default if is installed)
