@@ -197,10 +197,11 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                     except KeyError:
                         pass
 
-                if revision-lastrevprinted > 2:
+                if lastprinted != unknown or not ignoreunknown:
+                    if revision-lastrevprinted > 2:
                         iprint (lastrevprinted+1,revision-1,lastprinted,color)
-                else:
-                    iprint (revision-1,None,lastprinted,color)
+                    else:
+                        iprint (revision-1,None,lastprinted,color)
             lastrevprinted=revision-1
             lastprinted=toprint
     print("\n")
@@ -214,6 +215,8 @@ if __name__ == '__main__':
     parser.add_argument("--mergeunknown", help="If set, will differentiate UNKNOWN (no data for this revision)\n"
                                           "from NOERROR (we have data, but no error/result was reported).\n"
                                           "Otherwise (flag not set) will join both results.", action="store_true")
+    parser.add_argument("--ignoreunknown", help="If set, will not print UNKNOWN (no data for this revision)\n"
+                                          "This option disregards --mergeunknown.\n", action="store_true")
     parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
@@ -225,6 +228,8 @@ if __name__ == '__main__':
     else: detail = True
     if args.mergeunknown: mergeunknown = True
     else: mergeunknown = False
+    if args.ignoreunknown: ignoreunknown = True; mergeunknown = False
+    else: ignoreunknown = False
     if args.showexpected: showexpected = True
     else: showexpected = False
     if args.nocolor: usecolor = False
