@@ -228,7 +228,7 @@ if __name__ == '__main__':
     else: detail = True
     if args.mergeunknown: mergeunknown = True
     else: mergeunknown = False
-    if args.ignoreunknown: ignoreunknown = True; mergeunknown = False
+    if args.ignoreunknown: ignoreunknown = True;
     else: ignoreunknown = False
     if args.showexpected: showexpected = True
     else: showexpected = False
