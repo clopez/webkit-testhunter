@@ -37,6 +37,8 @@ About the colors:
 
     - A red color means that the test result and the expectation didn't matched.
     - A green color means that the test result was expected.
+      - If 'FAIL' is on the expectation, then the test matches the expectation
+        if the result is any of 'FAIL', 'TEXT', 'IMAGE+TEXT' or 'AUDIO'.
     - No color means UNKNOWN (no data)
 
     * To understand this better, run with --showexpected to check what was
@@ -189,7 +191,8 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                     try:
                         if 'expected' in resultsfortests[test][revision-1]:
                             for value in resultsfortests[test][revision-1]['result'].split(" "):
-                                if value in resultsfortests[test][revision-1]['expected']:
+                                if ( (value in resultsfortests[test][revision-1]['expected']) or # we check also for "[TEXT|IMAGE+TEXT|AUDIO]==FAIL"
+                                     ( (value in ('TEXT', 'IMAGE+TEXT', 'AUDIO')) and ('FAIL' in resultsfortests[test][revision-1]['expected']) ) ):
                                     color='\033[0;32m' # green
                                     if debug: print ("INFO: Marking test % as green on rev r%d, because actual value \"%s\" is in expected \"%s\" "
                                         %(test,revision-1,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
