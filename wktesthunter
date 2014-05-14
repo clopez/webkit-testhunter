@@ -112,9 +112,9 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
     testparts=test.split('/')
     if len(testparts) < 2 or "." not in testparts[len(testparts)-1]:
         raise ValueError("Test should be in the format path/test.html. Only one test accepted as parameter (no wildcards or directories)")
-    bot="GTK_Linux_64-bit_Release"
-    jsonresults=os.listdir('jsonresults')
-    jsonresults.sort()
+    # The order of the bots is relevant. If the same revision has been built for more than one bot,
+    # the last one will take precedence and will be the one that shows on the output.
+    bots=["GTK Linux 64-bit Release", "GTK Linux 64-bit Release WK2 (Tests)", "GTK Linux 64-bit Release (Tests)"]
 
     if mergeunknown:
         noerror="NOERROR/UNKNOWN"
@@ -123,42 +123,49 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
         noerror="NOERROR"
         unknown="UNKNOWN"
 
-    for jsonresult in jsonresults:
-        if jsonresult.startswith(bot+"_full_results_") and jsonresult.endswith('.json'):
-            (revision, buildnumber) = jsonresult.split(bot+"_full_results_")[1].split(".json")[0].split('_')
-            revision=int(revision.strip('r'))
-            buildnumber=int(buildnumber.strip('b'))
-            # Read file
-            json_file=open(os.path.join('jsonresults', jsonresult))
-            json_data=json_file.read()
-            json_file.close()
-            # Clean it
-            json_data=json_data.split('ADD_RESULTS(')[1]
-            json_data=json_data.split(');')[0]
-            # Parse it
-            json_parsed = json.loads(json_data)
-            # Sanity check
-            if int(json_parsed['revision']) != revision:
-                if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
-                revision=int(json_parsed['revision'])
+    for bot in bots:
+        botdir=os.path.join('jsonresults',bot)
+        if not os.path.isdir(botdir):
+            print ("WARNING: Skipping bot %s without results fetched" %bot)
+            continue
+        jsonresults=os.listdir(botdir)
+        jsonresults.sort()
+        for jsonresult in jsonresults:
+            if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
+                (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
+                revision=int(revision.strip('r'))
+                buildnumber=int(buildnumber.strip('b'))
+                # Read file
+                json_file=open(os.path.join(botdir, jsonresult))
+                json_data=json_file.read()
+                json_file.close()
+                # Clean it
+                json_data=json_data.split('ADD_RESULTS(')[1]
+                json_data=json_data.split(');')[0]
+                # Parse it
+                json_parsed = json.loads(json_data)
+                # Sanity check
+                if int(json_parsed['revision']) != revision:
+                    if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
+                    revision=int(json_parsed['revision'])
 
-            if revision in resultsfortests[test]:
-                if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
-            else:
-                resultsfortests[test][revision]={}
+                if revision in resultsfortests[test]:
+                    if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
+                else:
+                    resultsfortests[test][revision]={}
 
-            keytest=json_parsed['tests']
-            try:
-                for testpart in testparts:
-                    keytest=keytest[testpart]
-            except KeyError:
-                # This test didn't failed (or wasn't ran) on this rev.
-                resultsfortests[test][revision]['result']=noerror
-                continue
+                keytest=json_parsed['tests']
+                try:
+                    for testpart in testparts:
+                        keytest=keytest[testpart]
+                except KeyError:
+                    # This test didn't failed (or wasn't ran) on this rev.
+                    resultsfortests[test][revision]['result']=noerror
+                    continue
 
-            resultsfortests[test][revision]['result']=keytest['actual']
-            if 'expected' in keytest:
-                resultsfortests[test][revision]['expected']=keytest['expected']
+                resultsfortests[test][revision]['result']=keytest['actual']
+                if 'expected' in keytest:
+                    resultsfortests[test][revision]['expected']=keytest['expected']
 
 
     print ("Results for test: %s\n" %test)
