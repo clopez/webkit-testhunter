@@ -160,7 +160,13 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                         keytest=keytest[testpart]
                 except KeyError:
                     # This test didn't failed (or wasn't ran) on this rev.
-                    resultsfortests[test][revision]['result']=noerror
+                    if json_parsed['interrupted']:
+                        # If the whole set of tests didn't finished, mark it as unknown.
+                        if debug: print ("On revision %s the test set didn't finished." %(revision))
+                        resultsfortests[test][revision]['result']=unknown
+                    else:
+                        # Otherwise, mark it as noerror.
+                        resultsfortests[test][revision]['result']=noerror
                     continue
 
                 resultsfortests[test][revision]['result']=keytest['actual']
@@ -171,7 +177,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
     print ("Results for test: %s\n" %test)
     minrev=list(resultsfortests[test].keys())[0]
     maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
-    if debug: print ("minrev es %d y maxrev %d" %(minrev,maxrev))
+    if debug: print ("minrev is %d and maxrev %d" %(minrev,maxrev))
     lastprinted=unknown
     lastrevprinted=0
     # trick to end the print the last interval on the loop.
