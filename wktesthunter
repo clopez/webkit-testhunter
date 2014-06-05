@@ -28,8 +28,10 @@ except:
     # No python3 :(
     pass
 
+import re
 import json
 import argparse
+import subprocess
 from collections import OrderedDict
 
 extrahelp = '''
@@ -106,7 +108,7 @@ def iprint(firstrev,lastrev,result,startcolor):
 
 
 
-def main(test, debug, detail, mergeunknown, showexpected, usecolor):
+def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
@@ -115,6 +117,39 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
     # The order of the bots is relevant. If the same revision has been built for more than one bot,
     # the last one will take precedence and will be the one that shows on the output.
     bots=["GTK Linux 64-bit Release", "GTK Linux 64-bit Release WK2 (Tests)", "GTK Linux 64-bit Release (Tests)"]
+
+    outsvn = None
+    errsvn = None
+    svnreturncode = None
+    svnrev = 1
+    if checksvn:
+        try:
+            svncmd = ["svn", "log", "-r" ,"1:HEAD", "--limit", "1",
+                      "https://svn.webkit.org/repository/webkit/trunk/LayoutTests/" + test ]
+            psvn = subprocess.Popen( svncmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE )
+            (outsvn, errsvn) = psvn.communicate()
+            svnreturncode = psvn.returncode
+            if svnreturncode == 0:
+                svnrev = outsvn.decode('utf8').splitlines()[1].split()[0]
+                revregex = re.compile("^r[0-9]+$")
+                if revregex.match(svnrev):
+                    svnrev = int(svnrev[1:])
+                else:
+                    raise
+            else:
+                raise
+        except:
+            print ("Got an exception while trying to check the first revision for the test %s\n" %(test))
+            print ("Tried to run the following command: \"%s\"\n" %" ".join(svncmd))
+            if svnreturncode is None:
+                print ("Check that svn is installed.")
+            else:
+                print ("The return code was %d\n" %svnreturncode)
+                if outsvn is not None:
+                    print ("The standard output was:\n%s\n" %outsvn.decode('utf8'))
+                if errsvn is not None:
+                    print ("The standard error was:\n%s\n" %errsvn.decode('utf8'))
+            print ("Continuing without that information (assuming the first revision was r1)...\n\n")
 
     if mergeunknown:
         noerror="NOERROR/UNKNOWN"
@@ -174,16 +209,22 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                     resultsfortests[test][revision]['expected']=keytest['expected']
 
 
-    print ("Results for test: %s\n" %test)
     minrev=list(resultsfortests[test].keys())[0]
     maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
-    if debug: print ("minrev is %d and maxrev %d" %(minrev,maxrev))
+    print ("INFO: The revisions already fetched from the bots are on the interval [r%d-r%d]" %(minrev,maxrev))
+    startrev=max(minrev,svnrev)
+    if startrev > maxrev:
+        print ("The starting revision r%d is great than the last revision with data r%d" %(startrev,maxrev))
+        print ("Please fetch more data before continuing...")
+        return
     lastprinted=unknown
-    lastrevprinted=0
+    lastrevprinted=svnrev-1
+    if svnrev > 1: print ("INFO: From svn.webkit.org got that r%d added this test." %(svnrev))
     # trick to end the print the last interval on the loop.
     resultsfortests[test][maxrev+1]={}
     resultsfortests[test][maxrev+1]['result']='END'
-    for revision in range(minrev,maxrev+2):
+    print ("\nResults for test: %s\n" %test)
+    for revision in range(startrev,maxrev+2):
         if revision in resultsfortests[test]:
             toprint=resultsfortests[test][revision]['result']
             if showexpected and 'expected' in resultsfortests[test][revision]:
@@ -212,10 +253,11 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor):
                         pass
 
                 if lastprinted != unknown or not ignoreunknown:
-                    if revision-lastrevprinted > 2:
-                        iprint (lastrevprinted+1,revision-1,lastprinted,color)
-                    else:
-                        iprint (revision-1,None,lastprinted,color)
+                    if revision > svnrev:
+                        if revision-lastrevprinted > 2:
+                            iprint (lastrevprinted+1,revision-1,lastprinted,color)
+                        else:
+                            iprint (revision-1,None,lastprinted,color)
             lastrevprinted=revision-1
             lastprinted=toprint
     print("\n")
@@ -232,6 +274,7 @@ if __name__ == '__main__':
                                           "This option disregards --mergeunknown.\n", action="store_true")
     parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
+    parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
     args = parser.parse_args()
 
@@ -247,6 +290,8 @@ if __name__ == '__main__':
     else: showexpected = False
     if args.nocolor: usecolor = False
     else: usecolor = True
+    if args.nochecksvn: checksvn = False
+    else: checksvn = True
 
-    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn)
 
