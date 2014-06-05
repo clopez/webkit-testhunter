@@ -43,9 +43,6 @@ About the colors:
         if the result is any of 'FAIL', 'TEXT', 'IMAGE+TEXT' or 'AUDIO'.
     - No color means UNKNOWN (no data)
 
-    * To understand this better, run with --showexpected to check what was
-      the expectation for that test at the moment.
-
 
 The meaning of the possible results for a test on a revision is:
 
@@ -72,7 +69,6 @@ The meaning of the possible results for a test on a revision is:
 
     "PASS" means the test passed. This can be bad (if the color is red means that the test
      was not expected to pass according to TestExpectations).
-     Run with --showexpected to check what was the expectation for that test at the moment.
 
     "TEXT" means text failure.
 
@@ -86,7 +82,7 @@ Note for lazy people:
 
     * As an extra goodie from python's argparse, the parameters can be shorted to any length
       meanwhile there is no possible confusion between them. For example, you can use any of
-      "--showexpected", "--show" or "--s"; or you can use "--mergeunknown", "--merge" or "--m"
+      "--onlyprinterr", "--only" or "--o"; or you can use "--mergeunknown", "--merge" or "--m"
 '''
 
 
@@ -272,7 +268,7 @@ if __name__ == '__main__':
                                                "with the NOERROR results (we have data, but no error/result was reported).\n", action="store_true")
     parser.add_argument("--ignoreunknown", help="If set, will not print UNKNOWN (no data for this revision)\n"
                                           "This option disregards --mergeunknown.\n", action="store_true")
-    parser.add_argument("--showexpected", help="Print not only the test results, but also the expected result.", action="store_true")
+    parser.add_argument("--noshowexpected", help="Print only the test results without the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
@@ -286,8 +282,8 @@ if __name__ == '__main__':
     else: mergeunknown = False
     if args.ignoreunknown: ignoreunknown = True;
     else: ignoreunknown = False
-    if args.showexpected: showexpected = True
-    else: showexpected = False
+    if args.noshowexpected: showexpected = False
+    else: showexpected = True
     if args.nocolor: usecolor = False
     else: usecolor = True
     if args.nochecksvn: checksvn = False
