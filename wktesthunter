@@ -174,7 +174,11 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
                 json_data=json_data.split('ADD_RESULTS(')[1]
                 json_data=json_data.split(');')[0]
                 # Parse it
-                json_parsed = json.loads(json_data)
+                try:
+                    json_parsed = json.loads(json_data)
+                except:
+                    if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
+                    continue
                 # Sanity check
                 if int(json_parsed['revision']) != revision:
                     if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
