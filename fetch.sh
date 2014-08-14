@@ -10,10 +10,12 @@ webkitresultsurl="http://build.webkit.org/results"
 # The others were the names of this test bot in the past.
 # We fetch all the data from the actual test bot as also the past ones, to have a complete history
 webkitbots=( "GTK Linux 64-bit Release" "GTK Linux 64-bit Release WK2 (Tests)" "GTK Linux 64-bit Release (Tests)" )
+alreadytried=".cache_already_tried"
 cd jsonresults
 for webkitbot in "${webkitbots[@]}"; do
 	test -d "${webkitbot}" || mkdir "${webkitbot}"
 	cd "${webkitbot}"
+	test -f "${alreadytried}" || touch "${alreadytried}"
 	echo -e "\nFetching results for bot: ${webkitbot}"
 	webkitbot="$(urlencode "${webkitbot}")"
 	curl -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | sort | uniq | while read buildurl; do
@@ -23,13 +25,22 @@ for webkitbot in "${webkitbots[@]}"; do
 		downloadurl="${webkitresultsurl}/${webkitbot}/${buildurl}/full_results.json"
 		tries=1
 		while true; do
-			if test -f "${filedownload}" && grep -qP "^ADD_RESULTS\(.*\);$" "${filedownload}" ; then
-				# got it right
+			if grep -qx "${revision}_b${buildnum}" "${alreadytried}"; then
 				echo -n "."
 				break
 			fi
+			if test -f "${filedownload}" && grep -qP "^ADD_RESULTS\(.*\);$" "${filedownload}" ; then
+				# got it right
+				echo -n ":"
+				echo "${revision}_b${buildnum}" >> "${alreadytried}"
+				break
+			fi
 			if [[ ${tries} -gt 3 ]]; then
-				echo -e "\nERROR: After ${tries} tries I was unable to fetch resource: ${downloadurl}"
+				httpcode="$(curl -w "%{http_code}" -s "${downloadurl}" -o /dev/null)"
+					if [[ "${httpcode}" == "404" ]]; then
+						echo "${revision}_b${buildnum}" >> "${alreadytried}"
+					fi
+				echo -e "\nERROR: After ${tries} tries I was unable to fetch resource: ${downloadurl}. HTTP Error code was: ${httpcode}"
 				rm -f "${filedownload}"
 				break
 			fi
