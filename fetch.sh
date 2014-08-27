@@ -11,12 +11,20 @@ webkitresultsurl="http://build.webkit.org/results"
 # We fetch all the data from the actual test bot as also the past ones, to have a complete history
 webkitbots=( "GTK Linux 64-bit Release" "GTK Linux 64-bit Release WK2 (Tests)" "GTK Linux 64-bit Release (Tests)" )
 alreadytried=".cache_already_tried"
+islegacybot=".is_legacy_bot"
 cd jsonresults
 for webkitbot in "${webkitbots[@]}"; do
 	test -d "${webkitbot}" || mkdir "${webkitbot}"
 	cd "${webkitbot}"
+	if test -f "${islegacybot}"; then
+		echo -e "\nFetching results for bot ${webkitbot} skipped because this bot is not longer active and we already have all the results for it fetched."
+		echo -e "If this is not the case, then please remove the file $(pwd)/${islegacybot} and run this script again."
+		cd ..
+		continue
+	else
+		echo -e "\nFetching results for bot: ${webkitbot}"
+	fi
 	test -f "${alreadytried}" || touch "${alreadytried}"
-	echo -e "\nFetching results for bot: ${webkitbot}"
 	webkitbot="$(urlencode "${webkitbot}")"
 	curl -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | sort | uniq | while read buildurl; do
 		revision=$(echo "${buildurl}"|awk -F'%20' '{print $1}')
