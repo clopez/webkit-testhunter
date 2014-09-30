@@ -26,7 +26,7 @@ for webkitbot in "${webkitbots[@]}"; do
 	fi
 	test -f "${alreadytried}" || touch "${alreadytried}"
 	webkitbot="$(urlencode "${webkitbot}")"
-	curl -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | sort | uniq | while read buildurl; do
+	curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | sort | uniq | while read buildurl; do
 		revision=$(echo "${buildurl}"|awk -F'%20' '{print $1}')
 		buildnum=$(echo "${buildurl}"|awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')
 		filedownload="full_results_${revision}_b${buildnum}.json"
@@ -44,7 +44,7 @@ for webkitbot in "${webkitbots[@]}"; do
 				break
 			fi
 			if [[ ${tries} -gt 3 ]]; then
-				httpcode="$(curl -w "%{http_code}" -s "${downloadurl}" -o /dev/null)"
+				httpcode="$(curl -L -w "%{http_code}" -s "${downloadurl}" -o /dev/null)"
 					if [[ "${httpcode}" == "404" ]]; then
 						echo "${revision}_b${buildnum}" >> "${alreadytried}"
 					fi
@@ -56,7 +56,7 @@ for webkitbot in "${webkitbots[@]}"; do
 			[[ ${tries} -eq 1 ]] && echo
 			echo -n "${revision}... "
 			rm -f "${filedownload}"
-			curl -s "${downloadurl}" -o "${filedownload}"
+			curl -L -s "${downloadurl}" -o "${filedownload}"
 			tries=$(( ${tries} + 1 ))
 		done
 	done
