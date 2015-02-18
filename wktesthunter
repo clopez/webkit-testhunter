@@ -186,8 +186,8 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
 
                 if revision in resultsfortests[test]:
                     if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
-                else:
-                    resultsfortests[test][revision]={}
+
+                resultsfortests[test][revision]={}
 
                 keytest=json_parsed['tests']
                 try:
@@ -207,7 +207,6 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
                 resultsfortests[test][revision]['result']=keytest['actual']
                 if 'expected' in keytest:
                     resultsfortests[test][revision]['expected']=keytest['expected']
-
 
     minrev=list(resultsfortests[test].keys())[0]
     maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
@@ -246,8 +245,8 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
                                 if ( (value not in resultsfortests[test][revision-1]['expected']) and # we check also for "[TEXT|IMAGE+TEXT|AUDIO]==FAIL"
                                      ( (value not in ('TEXT', 'IMAGE+TEXT', 'AUDIO')) or ('FAIL' not in resultsfortests[test][revision-1]['expected']) ) ):
                                     color='\033[0;31m' # red
-                                    if debug: print ("INFO: Marking test % as green on rev r%d, because actual value \"%s\" is in expected \"%s\" "
-                                        %(test,revision-1,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
+                                    if debug: print ("INFO: Marking test % as red on rev r%d, because actual value \"%s\" of \"%s\" is not in expected \"%s\" "
+                                        %(test,revision-1,value,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
                     # This means we are going to print an unknown interval
                     except KeyError:
                         pass
