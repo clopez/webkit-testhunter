@@ -26,11 +26,11 @@ for webkitbot in "${webkitbots[@]}"; do
 	fi
 	test -f "${alreadytried}" || touch "${alreadytried}"
 	webkitbot="$(urlencode "${webkitbot}")"
-	curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | sort | uniq | while read buildurl; do
-		revision=$(echo "${buildurl}"|awk -F'%20' '{print $1}')
-		buildnum=$(echo "${buildurl}"|awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')
+	curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | awk -F'%29' '{print $1}' | sort | uniq | while read buildurl; do
+		revision="${buildurl%%\%*}"
+		buildnum="${buildurl##*\%28}"
 		filedownload="full_results_${revision}_b${buildnum}.json"
-		downloadurl="${webkitresultsurl}/${webkitbot}/${buildurl}/full_results.json"
+		downloadurl="${webkitresultsurl}/${webkitbot}/${buildurl}%29/full_results.json"
 		tries=1
 		while true; do
 			if grep -qx "${revision}_b${buildnum}" "${alreadytried}"; then
