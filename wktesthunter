@@ -103,16 +103,19 @@ def iprint(firstrev,lastrev,result,startcolor):
 
 
 
+bots = { # The reason to have more than one entry per bot is that some bots where renamed along the history.
+    'gtk-release' : ["GTK Linux 64-bit Release", "GTK Linux 64-bit Release WK2 (Tests)", "GTK Linux 64-bit Release (Tests)"],
+    'gtk-debug' : ["GTK Linux 64-bit Debug (Tests)"],
+    'gtk-release-wayland' : ["GTK Linux 64-bit Release Wayland (Tests)"],
+    'wpe-release' : ["WPE Linux 64-bit Release (Tests)"]
+}
 
-def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
+def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey):
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
     if len(testparts) < 2 or "." not in testparts[len(testparts)-1]:
         raise ValueError("Test should be in the format path/test.html. Only one test accepted as parameter (no wildcards or directories)")
-    # The order of the bots is relevant. If the same revision has been built for more than one bot,
-    # the last one will take precedence and will be the one that shows on the output.
-    bots=["GTK Linux 64-bit Release", "GTK Linux 64-bit Release WK2 (Tests)", "GTK Linux 64-bit Release (Tests)"]
 
     outsvn = None
     errsvn = None
@@ -154,7 +157,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
         noerror="NOERROR"
         unknown="UNKNOWN"
 
-    for bot in bots:
+    for bot in bots[botkey]:
         botdir=os.path.join('jsonresults',bot)
         if not os.path.isdir(botdir):
             print ("WARNING: Skipping bot %s without results fetched" %bot)
@@ -208,6 +211,9 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
                 if 'expected' in keytest:
                     resultsfortests[test][revision]['expected']=keytest['expected']
 
+    if len(resultsfortests[test]) == 0:
+        print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
+        return
     minrev=list(resultsfortests[test].keys())[0]
     maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
     print ("INFO: The revisions already fetched from the bots are on the interval [r%d-r%d]" %(minrev,maxrev))
@@ -222,7 +228,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn):
     # trick to end the print the last interval on the loop.
     resultsfortests[test][maxrev+1]={}
     resultsfortests[test][maxrev+1]['result']='END'
-    print ("\nResults for test: %s\n" %test)
+    print ("\nResults for bot %s and test: %s\n" %(botkey,test))
     for revision in range(startrev,maxrev+2):
         if revision in resultsfortests[test]:
             toprint=resultsfortests[test][revision]['result']
@@ -274,6 +280,7 @@ if __name__ == '__main__':
     parser.add_argument("--noshowexpected", help="Print only the test results without the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
+    parser.add_argument("--bot", help="Check the test results for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
     args = parser.parse_args()
 
@@ -292,5 +299,5 @@ if __name__ == '__main__':
     if args.nochecksvn: checksvn = False
     else: checksvn = True
 
-    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, args.bot)
 

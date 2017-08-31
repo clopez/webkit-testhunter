@@ -9,7 +9,14 @@ webkitresultsurl="http://build.webkit.org/results"
 # The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
 # The others were the names of this test bot in the past.
 # We fetch all the data from the actual test bot as also the past ones, to have a complete history
-webkitbots=( "GTK Linux 64-bit Release" "GTK Linux 64-bit Release WK2 (Tests)" "GTK Linux 64-bit Release (Tests)" )
+webkitbots=(
+	"GTK Linux 64-bit Release"
+	"GTK Linux 64-bit Release WK2 (Tests)"
+	"GTK Linux 64-bit Release (Tests)"
+	"GTK Linux 64-bit Debug (Tests)"
+	"GTK Linux 64-bit Release Wayland (Tests)"
+	"WPE Linux 64-bit Release (Tests)"
+)
 alreadytried=".cache_already_tried"
 islegacybot=".is_legacy_bot"
 cd jsonresults
