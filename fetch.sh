@@ -16,6 +16,7 @@ webkitbots=(
 	"GTK Linux 64-bit Debug (Tests)"
 	"GTK Linux 64-bit Release Wayland (Tests)"
 	"WPE Linux 64-bit Release (Tests)"
+	"WPE Linux 64-bit Debug (Tests)"
 )
 alreadytried=".cache_already_tried"
 islegacybot=".is_legacy_bot"
