@@ -32,6 +32,7 @@ import re
 import json
 import argparse
 import subprocess
+import math
 from collections import OrderedDict
 
 extrahelp = '''
@@ -223,7 +224,14 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
-        merge(resultsfortests[test], search(test, botdir, jsonresults))
+        JOBS = 4
+        trade = math.ceil(len(jsonresults)/JOBS)
+        for i in range(0,JOBS):
+            start, end = i*trade, (i+1)*trade
+            if end > len(jsonresults):
+                end = len(jsonresults)
+            ret = search(test, botdir, jsonresults[start:end])
+            merge(resultsfortests[test], ret)
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
