@@ -85,6 +85,8 @@ Note for lazy people:
       "--onlyprinterr", "--only" or "--o"; or you can use "--mergeunknown", "--merge" or "--m"
 '''
 
+noerror="NOERROR"
+unknown="UNKNOWN"
 
 def iprint(firstrev,lastrev,result,startcolor):
 
@@ -110,6 +112,56 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
     'wpe-release' : ["WPE Linux 64-bit Release (Tests)"],
     'wpe-debug' : ["WPE Linux 64-bit Debug (Tests)"]
 }
+
+def search(test, botdir, jsonresults, resultsfortests):
+    global noerror
+    testparts=test.split('/')
+    for jsonresult in jsonresults:
+        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
+            (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
+            revision=int(revision.strip('r'))
+            buildnumber=int(buildnumber.strip('b'))
+            # Read file
+            json_file=open(os.path.join(botdir, jsonresult))
+            json_data=json_file.read()
+            json_file.close()
+            # Clean it
+            json_data=json_data.split('ADD_RESULTS(')[1]
+            json_data=json_data.split(');')[0]
+            # Parse it
+            try:
+                json_parsed = json.loads(json_data)
+            except:
+                if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
+                continue
+            # Sanity check
+            if int(json_parsed['revision']) != revision:
+                if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
+                revision=int(json_parsed['revision'])
+
+            if revision in resultsfortests[test]:
+                if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
+
+            resultsfortests[test][revision]={}
+
+            keytest=json_parsed['tests']
+            try:
+                for testpart in testparts:
+                    keytest=keytest[testpart]
+            except KeyError:
+                # This test didn't failed (or wasn't ran) on this rev.
+                if json_parsed['interrupted']:
+                    # If the whole set of tests didn't finished, mark it as unknown.
+                    if debug: print ("On revision %s the test set didn't finished." %(revision))
+                    resultsfortests[test][revision]['result']=unknown
+                else:
+                    # Otherwise, mark it as noerror.
+                    resultsfortests[test][revision]['result']=noerror
+                continue
+
+            resultsfortests[test][revision]['result']=keytest['actual']
+            if 'expected' in keytest:
+                resultsfortests[test][revision]['expected']=keytest['expected']
 
 def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey):
     resultsfortests = {}
@@ -165,52 +217,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
-        for jsonresult in jsonresults:
-            if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-                (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
-                revision=int(revision.strip('r'))
-                buildnumber=int(buildnumber.strip('b'))
-                # Read file
-                json_file=open(os.path.join(botdir, jsonresult))
-                json_data=json_file.read()
-                json_file.close()
-                # Clean it
-                json_data=json_data.split('ADD_RESULTS(')[1]
-                json_data=json_data.split(');')[0]
-                # Parse it
-                try:
-                    json_parsed = json.loads(json_data)
-                except:
-                    if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
-                    continue
-                # Sanity check
-                if int(json_parsed['revision']) != revision:
-                    if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
-                    revision=int(json_parsed['revision'])
-
-                if revision in resultsfortests[test]:
-                    if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
-
-                resultsfortests[test][revision]={}
-
-                keytest=json_parsed['tests']
-                try:
-                    for testpart in testparts:
-                        keytest=keytest[testpart]
-                except KeyError:
-                    # This test didn't failed (or wasn't ran) on this rev.
-                    if json_parsed['interrupted']:
-                        # If the whole set of tests didn't finished, mark it as unknown.
-                        if debug: print ("On revision %s the test set didn't finished." %(revision))
-                        resultsfortests[test][revision]['result']=unknown
-                    else:
-                        # Otherwise, mark it as noerror.
-                        resultsfortests[test][revision]['result']=noerror
-                    continue
-
-                resultsfortests[test][revision]['result']=keytest['actual']
-                if 'expected' in keytest:
-                    resultsfortests[test][revision]['expected']=keytest['expected']
+        search(test, botdir, jsonresults, resultsfortests)
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
