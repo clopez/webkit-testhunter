@@ -28,12 +28,14 @@ except:
     # No python3 :(
     pass
 
-import re
-import json
 import argparse
-import subprocess
+import json
 import math
+import re
+import subprocess
+
 from collections import OrderedDict
+from multiprocessing import Pool
 
 extrahelp = '''
 About the colors:
@@ -224,14 +226,22 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
-        JOBS = 4
-        trade = math.ceil(len(jsonresults)/JOBS)
-        for i in range(0,JOBS):
-            start, end = i*trade, (i+1)*trade
-            if end > len(jsonresults):
-                end = len(jsonresults)
-            ret = search(test, botdir, jsonresults[start:end])
-            merge(resultsfortests[test], ret)
+        # Split job in several workers.
+        processes = 8
+        pool = Pool(processes=processes)
+        size = len(jsonresults)
+        stride = math.ceil(size/processes)
+        results = list()
+        for i in range(0, processes):
+            start, end = i*stride, (i+1)*stride
+            if end > size:
+                end = size
+            results.append(pool.apply_async(search, (test, botdir, jsonresults[start:end])))
+        # Join workers and merge results.
+        pool.close()
+        pool.join()
+        for each in results:
+            merge(resultsfortests[test], each.get())
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
