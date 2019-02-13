@@ -113,8 +113,9 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
     'wpe-debug' : ["WPE Linux 64-bit Debug (Tests)"]
 }
 
-def search(test, botdir, jsonresults, resultsfortests):
+def search(test, botdir, jsonresults):
     global noerror
+    ret = {}
     testparts=test.split('/')
     for jsonresult in jsonresults:
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
@@ -139,10 +140,10 @@ def search(test, botdir, jsonresults, resultsfortests):
                 if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
                 revision=int(json_parsed['revision'])
 
-            if revision in resultsfortests[test]:
+            if revision in ret:
                 if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
 
-            resultsfortests[test][revision]={}
+            ret[revision]={}
 
             keytest=json_parsed['tests']
             try:
@@ -153,15 +154,20 @@ def search(test, botdir, jsonresults, resultsfortests):
                 if json_parsed['interrupted']:
                     # If the whole set of tests didn't finished, mark it as unknown.
                     if debug: print ("On revision %s the test set didn't finished." %(revision))
-                    resultsfortests[test][revision]['result']=unknown
+                    ret[revision]['result']=unknown
                 else:
                     # Otherwise, mark it as noerror.
-                    resultsfortests[test][revision]['result']=noerror
+                    ret[revision]['result']=noerror
                 continue
 
-            resultsfortests[test][revision]['result']=keytest['actual']
+            ret[revision]['result']=keytest['actual']
             if 'expected' in keytest:
-                resultsfortests[test][revision]['expected']=keytest['expected']
+                ret[revision]['expected']=keytest['expected']
+    return ret
+
+def merge(dst, src):
+    for k,v in src.items():
+        dst[k] = v
 
 def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey):
     resultsfortests = {}
@@ -217,7 +223,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
-        search(test, botdir, jsonresults, resultsfortests)
+        merge(resultsfortests[test], search(test, botdir, jsonresults))
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
