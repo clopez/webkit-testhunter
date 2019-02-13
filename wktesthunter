@@ -33,6 +33,7 @@ import json
 import math
 import re
 import subprocess
+import multiprocessing as mp
 
 from collections import OrderedDict
 from multiprocessing import Pool
@@ -172,7 +173,7 @@ def merge(dst, src):
     for k,v in src.items():
         dst[k] = v
 
-def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey):
+def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey, processes):
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
@@ -226,22 +227,24 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
-        # Split job in several workers.
-        processes = 8
-        pool = Pool(processes=processes)
-        size = len(jsonresults)
-        stride = math.ceil(size/processes)
-        results = list()
-        for i in range(0, processes):
-            start, end = i*stride, (i+1)*stride
-            if end > size:
-                end = size
-            results.append(pool.apply_async(search, (test, botdir, jsonresults[start:end])))
-        # Join workers and merge results.
-        pool.close()
-        pool.join()
-        for each in results:
-            merge(resultsfortests[test], each.get())
+        if processes == 1:
+            merge(resultsfortests[test], search(test, botdir, jsonresults))
+        else:
+            # Split job in several workers.
+            pool = Pool(processes=processes)
+            size = len(jsonresults)
+            stride = int(math.ceil(size/processes))
+            results = list()
+            for i in range(0, processes):
+                start, end = i*stride, (i+1)*stride
+                if end > size:
+                    end = size
+                results.append(pool.apply_async(search, (test, botdir, jsonresults[start:end])))
+            # Join workers and merge results.
+            pool.close()
+            pool.join()
+            for each in results:
+                merge(resultsfortests[test], each.get())
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
@@ -313,6 +316,7 @@ if __name__ == '__main__':
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
     parser.add_argument("--bot", help="Check the test results for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
+    parser.add_argument("-j", type=int, help="Number of processes to use", default=mp.cpu_count())
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
     args = parser.parse_args()
 
@@ -331,4 +335,4 @@ if __name__ == '__main__':
     if args.nochecksvn: checksvn = False
     else: checksvn = True
 
-    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, args.bot)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, args.bot, args.j)
