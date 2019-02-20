@@ -121,7 +121,13 @@ def search(test, botdir, jsonresults):
     global noerror
     ret = {}
     testparts=test.split('/')
+    count = 0
+    threshold = 100
     for jsonresult in jsonresults:
+        if count > threshold:
+            count = 0
+            sys.stdout.write(".")
+            sys.stdout.flush()
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
             (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
             revision=int(revision.strip('r'))
@@ -167,6 +173,7 @@ def search(test, botdir, jsonresults):
             ret[revision]['result']=keytest['actual']
             if 'expected' in keytest:
                 ret[revision]['expected']=keytest['expected']
+            count += 1
     return ret
 
 def merge(dst, src):
@@ -220,6 +227,8 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
         noerror="NOERROR"
         unknown="UNKNOWN"
 
+    sys.stdout.write("Searching: ")
+    sys.stdout.flush()
     for bot in bots[botkey]:
         botdir=os.path.join('jsonresults',bot)
         if not os.path.isdir(botdir):
