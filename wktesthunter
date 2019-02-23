@@ -258,8 +258,9 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
         return
-    minrev=list(resultsfortests[test].keys())[0]
-    maxrev=list(resultsfortests[test].keys())[len(resultsfortests[test])-1]
+    keys = list(resultsfortests[test].keys())
+    keys.sort()
+    minrev, maxrev = keys[0], keys[len(keys) - 1]
     print ("INFO: The revisions already fetched from the bots are on the interval [r%d-r%d]" %(minrev,maxrev))
     startrev=max(minrev,svnrev)
     if startrev > maxrev:
