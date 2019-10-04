@@ -33,6 +33,7 @@ import json
 import math
 import re
 import subprocess
+import signal
 import time
 import multiprocessing as mp
 
@@ -362,6 +363,11 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
     print("\n")
     return 0
 
+
+def sigterm_this_process(signum, frame):
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
@@ -397,4 +403,7 @@ if __name__ == '__main__':
     if args.noprintprogress: printprogress = False
     else: printprogress = sys.stderr.isatty()
 
+    # Exit inmediately on CTRL+C or broken-pipe situations.
+    signal.signal(signal.SIGINT, sigterm_this_process)
+    signal.signal(signal.SIGPIPE, sigterm_this_process)
     main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j)
