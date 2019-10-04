@@ -133,6 +133,12 @@ def get_revision_start_end(jsonresults, svnrev):
     return rev_start, rev_end
 
 
+def write_progress_message(text):
+    sys.stderr.write("\r\033[K") # reset line
+    sys.stderr.write(text)
+    sys.stderr.flush()
+
+
 def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
     ret = {}
     testparts=test.split('/')
@@ -149,10 +155,9 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
                 count = 1
                 percent_search += 1
                 if percent_search > 98 :
-                    sys.stdout.write("\rSearching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
+                    write_progress_message("Searching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
                 else:
-                    sys.stdout.write("\rSearching: [r%s-r%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
-                sys.stdout.flush()
+                    write_progress_message("Searching: [r%s-r%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
             (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
             revision=int(revision.strip('r'))
@@ -203,6 +208,10 @@ def merge(dst, src):
     for k,v in src.items():
         dst[k] = v
 
+def maybe_bold(text, usecolor):
+    if usecolor:
+        return "\033[1m%s\033[0m" % text
+    return text
 
 def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes):
     global noerror
@@ -230,7 +239,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
                 if revregex.match(svnrev):
                     svnrev = int(svnrev[1:])
                     if svnrev > 1:
-                        print ("INFO: From svn.webkit.org got that r%d added this test." %(svnrev))
+                        print ("INFO: From svn.webkit.org got that %s added this test." %(maybe_bold("r%d" % svnrev, usecolor)))
                 else:
                     raise
             else:
@@ -286,24 +295,23 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
                 while True:
                     complete_count = sum(1 for x in results if x.ready())
                     if complete_count == processes:
-                        sys.stdout.write("\rSearching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
+                        write_progress_message("Searching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
                         break
-                    sys.stdout.write("\rSearching: [r%s-r%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
+                    write_progress_message("Searching: [r%s-r%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
                     time.sleep(0.25)
             pool.join()
             for each in results:
                 merge(resultsfortests[test], each.get())
-        if printprogress:
-            sys.stdout.write("\n")
-            sys.stdout.flush()
 
+    if printprogress: write_progress_message("") # reset write progress message
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
         return
     keys = list(resultsfortests[test].keys())
     keys.sort()
     minrev, maxrev = keys[0], keys[len(keys) - 1]
-    print ("INFO: The revisions that will be processed from the bot are on the interval [r%d-r%d]" %(minrev,maxrev))
+    print ("INFO: The revisions processed for the bot %s are on the interval %s" %
+            (maybe_bold(botkey, usecolor), maybe_bold("[r%d-r%d]" %(minrev,maxrev), usecolor)))
     startrev=max(minrev,svnrev)
     if startrev > maxrev:
         print ("The starting revision r%d is great than the last revision with data r%d" %(startrev,maxrev))
@@ -387,6 +395,6 @@ if __name__ == '__main__':
     if args.nochecksvn: checksvn = False
     else: checksvn = True
     if args.noprintprogress: printprogress = False
-    else: printprogress = sys.stdout.isatty()
+    else: printprogress = sys.stderr.isatty()
 
     main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j)
