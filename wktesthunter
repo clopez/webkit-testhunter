@@ -178,8 +178,8 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
                 if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
                 revision=int(json_parsed['revision'])
 
-            if revision in ret:
-                if debug: print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
+            if debug and revision in ret:
+                print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
 
             ret[revision]={}
 
