@@ -118,7 +118,6 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
 }
 
 def search(test, botdir, jsonresults):
-    global noerror
     ret = {}
     testparts=test.split('/')
     count = 0
@@ -181,6 +180,8 @@ def merge(dst, src):
         dst[k] = v
 
 def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey, processes):
+    global noerror
+    global unknown
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
