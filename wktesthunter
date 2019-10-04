@@ -119,15 +119,17 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
 }
 
 
-def get_revision_start_end(jsonresults):
+def get_revision_start_end(jsonresults, svnrev):
     for jsonresult in jsonresults:
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-            rev_start = jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0]
+            rev_start = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
             break
     for jsonresult in jsonresults[::-1]:
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-            rev_end = jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0]
+            rev_end = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
             break
+    if svnrev > rev_start:
+        rev_start = svnrev
     return rev_start, rev_end
 
 
@@ -135,7 +137,7 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
     ret = {}
     testparts=test.split('/')
     if shouldprint_progress:
-        rev_start, rev_end = get_revision_start_end(jsonresults)
+        rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
         count = 0
         percent_search = 0
         threshold = len(jsonresults)/100
@@ -147,9 +149,9 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
                 count = 1
                 percent_search += 1
                 if percent_search > 98 :
-                    sys.stdout.write("\rSearching: [%s-%s][%s] done" % (rev_start,rev_end,botname))
+                    sys.stdout.write("\rSearching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
                 else:
-                    sys.stdout.write("\rSearching: [%s-%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
+                    sys.stdout.write("\rSearching: [r%s-r%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
                 sys.stdout.flush()
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
             (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
@@ -261,9 +263,9 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
         botname = botdir.split('/',1)[1]
-        rev_start, rev_end = get_revision_start_end(jsonresults)
-        if svnrev > int(rev_end.strip('r')):
-            if debug: print("\rSkipped bot: [%s-%s][%s] (SVN first revision great than last result for bot)" % (rev_start,rev_end,botname))
+        rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
+        if svnrev > rev_end:
+            if debug: print("Skipped bot: [r%s-r%s][%s] (SVN first revision great than last result for bot)" % (rev_start,rev_end,botname))
             continue
         if processes == 1:
             merge(resultsfortests[test], search(test, botdir, svnrev, jsonresults, printprogress))
@@ -284,9 +286,9 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
                 while True:
                     complete_count = sum(1 for x in results if x.ready())
                     if complete_count == processes:
-                        sys.stdout.write("\rSearching: [%s-%s][%s] done" % (rev_start,rev_end,botname))
+                        sys.stdout.write("\rSearching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
                         break
-                    sys.stdout.write("\rSearching: [%s-%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
+                    sys.stdout.write("\rSearching: [r%s-r%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
                     time.sleep(0.25)
             pool.join()
             for each in results:
@@ -301,7 +303,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
     keys = list(resultsfortests[test].keys())
     keys.sort()
     minrev, maxrev = keys[0], keys[len(keys) - 1]
-    print ("INFO: The revisions already fetched from the bots are on the interval [r%d-r%d]" %(minrev,maxrev))
+    print ("INFO: The revisions that will be processed from the bot are on the interval [r%d-r%d]" %(minrev,maxrev))
     startrev=max(minrev,svnrev)
     if startrev > maxrev:
         print ("The starting revision r%d is great than the last revision with data r%d" %(startrev,maxrev))
