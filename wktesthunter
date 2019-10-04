@@ -172,12 +172,6 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
                 if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
                 continue
 
-            ## TODO: The last SVN seach performance improvement assumes the SVN revision on the filename matches the data.
-            ## This should be converted into an independent test to sanity-check the files instead of doing this here
-            if int(json_parsed['revision']) != revision:
-                if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
-                revision=int(json_parsed['revision'])
-
             if debug and revision in ret:
                 print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
 
