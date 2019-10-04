@@ -33,6 +33,7 @@ import json
 import math
 import re
 import subprocess
+import time
 import multiprocessing as mp
 
 from collections import OrderedDict
@@ -117,16 +118,39 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
     'wpe-debug' : ["WPE Linux 64-bit Debug (Tests)"]
 }
 
-def search(test, botdir, jsonresults):
+
+def get_revision_start_end(jsonresults):
+    for jsonresult in jsonresults:
+        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
+            rev_start = jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0]
+            break
+    for jsonresult in jsonresults[::-1]:
+        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
+            rev_end = jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0]
+            break
+    return rev_start, rev_end
+
+
+def search(test, botdir, jsonresults, shouldprint_progress = False):
     ret = {}
     testparts=test.split('/')
-    count = 0
-    threshold = 100
+    if shouldprint_progress:
+        rev_start, rev_end = get_revision_start_end(jsonresults)
+        count = 0
+        percent_search = 0
+        threshold = len(jsonresults)/100
+        botname = botdir.split('/',1)[1]
     for jsonresult in jsonresults:
-        if count > threshold:
-            count = 0
-            sys.stdout.write(".")
-            sys.stdout.flush()
+        if shouldprint_progress:
+            count += 1
+            if count >= threshold:
+                count = 1
+                percent_search += 1
+                if percent_search > 98 :
+                    sys.stdout.write("\rSearching: [%s-%s][%s] done" % (rev_start,rev_end,botname))
+                else:
+                    sys.stdout.write("\rSearching: [%s-%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
+                sys.stdout.flush()
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
             (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
             revision=int(revision.strip('r'))
@@ -172,14 +196,14 @@ def search(test, botdir, jsonresults):
             ret[revision]['result']=keytest['actual']
             if 'expected' in keytest:
                 ret[revision]['expected']=keytest['expected']
-            count += 1
     return ret
 
 def merge(dst, src):
     for k,v in src.items():
         dst[k] = v
 
-def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, botkey, processes):
+
+def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes):
     global noerror
     global unknown
     resultsfortests = {}
@@ -204,6 +228,8 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
                 revregex = re.compile("^r[0-9]+$")
                 if revregex.match(svnrev):
                     svnrev = int(svnrev[1:])
+                    if svnrev > 1:
+                        print ("INFO: From svn.webkit.org got that r%d added this test." %(svnrev))
                 else:
                     raise
             else:
@@ -228,8 +254,6 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
         noerror="NOERROR"
         unknown="UNKNOWN"
 
-    sys.stdout.write("Searching: ")
-    sys.stdout.flush()
     for bot in bots[botkey]:
         botdir=os.path.join('jsonresults',bot)
         if not os.path.isdir(botdir):
@@ -238,7 +262,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
         if processes == 1:
-            merge(resultsfortests[test], search(test, botdir, jsonresults))
+            merge(resultsfortests[test], search(test, botdir, jsonresults, printprogress))
         else:
             # Split job in several workers.
             pool = Pool(processes=processes)
@@ -252,9 +276,22 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
                 results.append(pool.apply_async(search, (test, botdir, jsonresults[start:end])))
             # Join workers and merge results.
             pool.close()
+            if printprogress:
+                rev_start, rev_end = get_revision_start_end(jsonresults)
+                while True:
+                    botname = botdir.split('/',1)[1]
+                    complete_count = sum(1 for x in results if x.ready())
+                    if complete_count == processes:
+                        sys.stdout.write("\rSearching: [%s-%s][%s] done" % (rev_start,rev_end,botname))
+                        break
+                    sys.stdout.write("\rSearching: [%s-%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
+                    time.sleep(0.25)
             pool.join()
             for each in results:
                 merge(resultsfortests[test], each.get())
+        if printprogress:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
     if len(resultsfortests[test]) == 0:
         print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
@@ -270,7 +307,6 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, bo
         return
     lastprinted=unknown
     lastrevprinted=svnrev-1
-    if svnrev > 1: print ("INFO: From svn.webkit.org got that r%d added this test." %(svnrev))
     # trick to end the print the last interval on the loop.
     resultsfortests[test][maxrev+1]={}
     resultsfortests[test][maxrev+1]['result']='END'
@@ -326,6 +362,7 @@ if __name__ == '__main__':
     parser.add_argument("--noshowexpected", help="Print only the test results without the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
+    parser.add_argument("--noprintprogress", help="Don't print percentage progress of computations..", action="store_true")
     parser.add_argument("--bot", help="Check the test results for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
     parser.add_argument("-j", type=int, help="Number of processes to use", default=mp.cpu_count())
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
@@ -345,5 +382,7 @@ if __name__ == '__main__':
     else: usecolor = True
     if args.nochecksvn: checksvn = False
     else: checksvn = True
+    if args.noprintprogress: printprogress = False
+    else: printprogress = sys.stdout.isatty()
 
-    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, args.bot, args.j)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j)
