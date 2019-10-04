@@ -323,7 +323,7 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
     # trick to end the print the last interval on the loop.
     resultsfortests[test][maxrev+1]={}
     resultsfortests[test][maxrev+1]['result']='END'
-    print ("\nResults for bot %s and test: %s\n" %(botkey,test))
+    print ("\nResults for bot %s and test: %s\n" %(maybe_bold(botkey,usecolor),maybe_bold(test,usecolor)))
     for revision in range(startrev,maxrev+2):
         if revision in resultsfortests[test]:
             toprint=resultsfortests[test][revision]['result']
