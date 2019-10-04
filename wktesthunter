@@ -131,7 +131,7 @@ def get_revision_start_end(jsonresults):
     return rev_start, rev_end
 
 
-def search(test, botdir, jsonresults, shouldprint_progress = False):
+def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
     ret = {}
     testparts=test.split('/')
     if shouldprint_progress:
@@ -154,6 +154,9 @@ def search(test, botdir, jsonresults, shouldprint_progress = False):
         if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
             (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
             revision=int(revision.strip('r'))
+            if revision < svnrev:
+                if debug: print ("Skipping file %s because its rev number %s is lower than svnrev %s\n" %(jsonresult,revision,svnrev))
+                continue
             buildnumber=int(buildnumber.strip('b'))
             # Read file
             json_file=open(os.path.join(botdir, jsonresult))
@@ -168,7 +171,9 @@ def search(test, botdir, jsonresults, shouldprint_progress = False):
             except:
                 if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
                 continue
-            # Sanity check
+
+            ## TODO: The last SVN seach performance improvement assumes the SVN revision on the filename matches the data.
+            ## This should be converted into an independent test to sanity-check the files instead of doing this here
             if int(json_parsed['revision']) != revision:
                 if debug: print ("WARNING: Parsed revision %s don't match expected one %d for file %s" %(json_parsed['revision'],revision,jsonresult))
                 revision=int(json_parsed['revision'])
@@ -261,8 +266,13 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
             continue
         jsonresults=os.listdir(botdir)
         jsonresults.sort()
+        botname = botdir.split('/',1)[1]
+        rev_start, rev_end = get_revision_start_end(jsonresults)
+        if svnrev > int(rev_end.strip('r')):
+            if debug: print("\rSkipped bot: [%s-%s][%s] (SVN first revision great than last result for bot)" % (rev_start,rev_end,botname))
+            continue
         if processes == 1:
-            merge(resultsfortests[test], search(test, botdir, jsonresults, printprogress))
+            merge(resultsfortests[test], search(test, botdir, svnrev, jsonresults, printprogress))
         else:
             # Split job in several workers.
             pool = Pool(processes=processes)
@@ -273,13 +283,11 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
                 start, end = i*stride, (i+1)*stride
                 if end > size:
                     end = size
-                results.append(pool.apply_async(search, (test, botdir, jsonresults[start:end])))
+                results.append(pool.apply_async(search, (test, botdir, svnrev, jsonresults[start:end])))
             # Join workers and merge results.
             pool.close()
             if printprogress:
-                rev_start, rev_end = get_revision_start_end(jsonresults)
                 while True:
-                    botname = botdir.split('/',1)[1]
                     complete_count = sum(1 for x in results if x.ready())
                     if complete_count == processes:
                         sys.stdout.write("\rSearching: [%s-%s][%s] done" % (rev_start,rev_end,botname))
