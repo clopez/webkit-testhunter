@@ -214,7 +214,7 @@ def maybe_bold(text, usecolor):
         return "\033[1m%s\033[0m" % text
     return text
 
-def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes):
+def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes, maxdepthsearch):
     global noerror
     global unknown
     resultsfortests = {}
@@ -257,6 +257,23 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
                 if errsvn is not None:
                     print ("The standard error was:\n%s\n" %errsvn.decode('utf8'))
             print ("Continuing without that information (assuming the first revision was r1)...\n\n")
+    if maxdepthsearch:
+        max_rev = 1
+        for bot in bots[botkey]:
+            botdir = os.path.join('jsonresults',bot)
+            if not os.path.isdir(botdir):
+                continue
+            jsonresults = os.listdir(botdir)
+            jsonresults.sort()
+            rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
+            if rev_end > max_rev:
+                max_rev = rev_end
+        min_rev = max_rev - maxdepthsearch
+        if min_rev < 1:
+            min_rev = 1
+        if min_rev > svnrev:
+            svnrev = min_rev
+            print ("INFO: Search limited to the last %s known revisions. Pass --all or --depth to search deeper." % maybe_bold(maxdepthsearch, usecolor))
 
     if mergeunknown:
         noerror="NOERROR/UNKNOWN"
@@ -266,16 +283,16 @@ def main(test, debug, detail, mergeunknown, showexpected, usecolor, checksvn, pr
         unknown="UNKNOWN"
 
     for bot in bots[botkey]:
-        botdir=os.path.join('jsonresults',bot)
+        botdir = os.path.join('jsonresults',bot)
         if not os.path.isdir(botdir):
             print ("WARNING: Skipping bot %s without results fetched" %bot)
             continue
-        jsonresults=os.listdir(botdir)
+        jsonresults = os.listdir(botdir)
         jsonresults.sort()
         botname = botdir.split('/',1)[1]
         rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
         if svnrev > rev_end:
-            if debug: print("Skipped bot: [r%s-r%s][%s] (SVN first revision great than last result for bot)" % (rev_start,rev_end,botname))
+            if debug: print("Skipped bot: [r%s-r%s][%s] (SVN first searched revision great than last result for bot)" % (rev_start,rev_end,botname))
             continue
         if processes == 1:
             merge(resultsfortests[test], search(test, botdir, svnrev, jsonresults, printprogress))
@@ -384,6 +401,9 @@ if __name__ == '__main__':
     parser.add_argument("--bot", help="Check the test results for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
     parser.add_argument("-j", type=int, help="Number of processes to use", default=mp.cpu_count())
     parser.add_argument("test_name", type=str, help="Name for the test (as specified on run-webkit-tests).")
+    number_revisions = parser.add_mutually_exclusive_group()
+    number_revisions.add_argument('--all', action='store_true', help='Search in all the revisions known for bot')
+    number_revisions.add_argument('--depth', help='Search in only the last X revisions known for bot. Default is 4000.', default=4000)
     args = parser.parse_args()
 
     if args.debug: debug = True
@@ -402,8 +422,10 @@ if __name__ == '__main__':
     else: checksvn = True
     if args.noprintprogress: printprogress = False
     else: printprogress = sys.stderr.isatty()
+    if args.all: maxdepthsearch = None
+    elif args.depth: maxdepthsearch = int(args.depth)
 
     # Exit inmediately on CTRL+C or broken-pipe situations.
     signal.signal(signal.SIGINT, sigterm_this_process)
     signal.signal(signal.SIGPIPE, sigterm_this_process)
-    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j)
+    main(args.test_name, debug, detail, mergeunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j, maxdepthsearch)
