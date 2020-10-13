@@ -24,13 +24,13 @@ webkitresultsurl="http://build.webkit.org/results"
 # We fetch all the data from the actual test bot as also the past ones, to have a complete history
 declare -A webkitbots_map
 webkitbots_map=(
-   ["gtk-release-old"]="GTK Linux 64-bit Release"
-   ["gtk-release-wk2"]="GTK Linux 64-bit Release WK2 (Tests)"
-   ["gtk-release"]="GTK Linux 64-bit Release (Tests)"
-   ["gtk-debug"]="GTK Linux 64-bit Debug (Tests)"
-   ["gtk-release-wayland"]="GTK Linux 64-bit Release Wayland (Tests)"
-   ["wpe-release"]="WPE Linux 64-bit Release (Tests)"
-   ["wpe-debug"]="WPE Linux 64-bit Debug (Tests)"
+   ["gtk-release-old"]="GTK-Linux-64-bit-Release"
+   ["gtk-release-wk2"]="GTK-Linux-64-bit-Release-WK2-Tests"
+   ["gtk-release"]="GTK-Linux-64-bit-Release-Tests"
+   ["gtk-debug"]="GTK-Linux-64-bit-Debug-Tests"
+   ["gtk-release-wayland"]="GTK-Linux-64-bit-Release-Wayland-Tests"
+   ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
+   ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
 )
 webkitbots_keys=()
 for each in "${!webkitbots_map[@]}"; do
