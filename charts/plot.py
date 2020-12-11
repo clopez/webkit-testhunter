@@ -21,6 +21,7 @@
 """Plot Layout tests results over time"""
 
 import os
+import sys
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -102,11 +103,18 @@ def main():
     args = parse_args()
 
     df = read_df(args.filename)
-    plot_expected(df, args.port, args.config)
-    plot_unexpected(df, args.port, args.config)
+
+    if not os.path.exists(args.directory):
+        os.makedirs(args.directory)
+    elif not os.path.isdir(args.directory):
+        print("Output directory is not a directory", file=sys.stderr)
+        sys.exit(1)
+
+    plot_expected(df, args.port, args.config, args.directory)
+    plot_unexpected(df, args.port, args.config, args.directory)
 
 
-def plot_unexpected(df, port, config):
+def plot_unexpected(df, port, config, directory):
     """Plot the unexpected results
 
     The unexpected results are grouped in regressions (failures, timeouts,
@@ -127,13 +135,13 @@ def plot_unexpected(df, port, config):
     ax.grid(True, linestyle="-.")
     fig = ax.get_figure()
     fig.savefig(
-        "%s-regr-flaky.png" % port_str(port, config),
+        os.path.join(directory, ("%s-regr-flaky.png" % port_str(port, config))),
         transparent=True,
         bbox_inches="tight",
     )
 
 
-def plot_expected(df, port, config):
+def plot_expected(df, port, config, directory):
     """Plot the expected results
 
     The expected results are grouped in passes, skips and known failures. The last
@@ -152,7 +160,7 @@ def plot_expected(df, port, config):
     ax.grid(True, linestyle="-.")
     fig = ax.get_figure()
     fig.savefig(
-        "%s-skip-fix-pass.png" % port_str(port, config),
+        os.path.join(directory, ("%s-skip-fix-pass.png" % port_str(port, config))),
         transparent=True,
         bbox_inches="tight",
     )
