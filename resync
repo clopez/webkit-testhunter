@@ -1,47 +1,17 @@
 #!/usr/bin/env bash
 
-declare -A BOTS_MAP=(
-   [gtk-debug]=1
-   [gtk-release]=1
-   [wpe-debug]=1
-   [wpe-release]=1
-)
+fetch=$(dirname "$0")/fetch.sh
 
-BOTS=()
-
-usage()
-{
-   local exit_code="$1"
-
-   echo "Usage: resync [bot...]"
-   echo "Resyncs test results"
-   echo ""
-   echo "ARGUMENTS:"
-   echo -e "\tbot\t\t${!BOTS[@]}"
-   echo "OPTIONS:"
-   echo -e "\t-h,--help\tPrints this help"
-
-   exit $exit_code
-}
-
-scan_args()
-{
-   local args=("$@")
-
-   for arg in "${args[@]}"; do
-      if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-         usage 0
-      else
-         if [[ ! "${BOTS_MAP[$arg]}" ]]; then
-            echo "Invalid argument: $arg"
-            exit 1
-         fi
-         BOTS+=("$arg")
-      fi
-   done
-}
-
-scan_args "$@"
+for arg in "${@}"; do
+   if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+      echo "Resyncs test results."
+      echo "    1. It cleans jsonresults directory"
+      echo "    2. It calls fetch.sh with the arguments passed (bot name)"
+      echo -e "    3. Accepted arguments are:\n"
+      "${fetch}" "-h"
+      exit $?
+   fi
+done
 
 # Clean jsonresults directory.
 git clean -d -f jsonresults/
@@ -53,7 +23,11 @@ git fetch origin
 git pull
 
 # Fetch latest results from requested bots.
-fetch=$(dirname "$0")/fetch.sh
-for bot in "${BOTS[@]}"; do
-   $fetch "$bot"
-done
+
+if [[ ${#@} -gt 0 ]]; then
+   for bot in "${@}"; do
+      "${fetch}" "${bot}"
+   done
+else
+   "${fetch}"
+fi
