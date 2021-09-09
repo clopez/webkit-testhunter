@@ -180,7 +180,7 @@ def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
             try:
                 json_parsed = json.loads(json_data)
             except:
-                if debug: print ("WARNING: Exception caused by file: %s Ignoring file." %os.path.join('jsonresults',bot,jsonresult))
+                if debug: print ('WARNING: Exception caused by file: %s Ignoring file.' % os.path.join(botdir, jsonresult))
                 continue
 
             if debug and revision in ret:
@@ -399,8 +399,8 @@ def main(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolo
                     if revision-1 in resultsfortests[test]:
                         if _result_for_test_is_unexpected(resultsfortests[test][revision-1]):
                             color='\033[0;31m' # red
-                            if debug: print ("INFO: Marking test % as red on rev r%d, because actual value \"%s\" of \"%s\" is not in expected \"%s\" "
-                                        %(test,revision-1,value,resultsfortests[test][revision-1]['result'],resultsfortests[test][revision-1]['expected']))
+                            if debug: print ('INFO: Marking test % as red on rev r%d, because actual result "%s" does not match the expectation "%s"'
+                                        %(test, revision-1, resultsfortests[test][revision-1]['result'], resultsfortests[test][revision-1]['expected']))
 
                 if lastprinted != unknown or not ignoreunknown:
                     if revision > svnrev:
