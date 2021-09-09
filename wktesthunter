@@ -240,8 +240,6 @@ def _result_for_test_is_unexpected(test_data_result_and_expected):
     return False
 
 def main(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes, maxdepthsearch, reportsummary):
-    global noerror
-    global unknown
     resultsfortests = {}
     resultsfortests[test]=OrderedDict()
     testparts=test.split('/')
