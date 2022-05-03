@@ -17,7 +17,8 @@ usage () {
 urlencode () {
     python -c "import urllib; print urllib.quote(\"${@}\")"
 }
-webkitresultsurl="http://build.webkit.org/results"
+
+WEBKIT_RESULTS_URL="https://build.webkit.org/results"
 
 # The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
 # The others were the names of this test bot in the past.
@@ -62,6 +63,12 @@ if [[ $# -gt 0 ]]; then
    done
 fi
 
+get_results() {
+    local webkitbot="$1"
+
+    curl -L -s "${WEBKIT_RESULTS_URL}/${webkitbot}/" | grep "href=" | grep "main" | sed -r 's|.*="(.*)".*|\1|' | sort -u
+}
+
 alreadytried=".cache_already_tried"
 islegacybot=".is_legacy_bot"
 cd jsonresults
@@ -78,11 +85,17 @@ for webkitbot in "${webkitbots_values[@]}"; do
     fi
     test -f "${alreadytried}" || touch "${alreadytried}"
     webkitbot="$(urlencode "${webkitbot}")"
-    curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | awk -F'%29' '{print $1}' | sort | uniq | while read buildurl; do
-        revision="${buildurl%%\%*}"
-        buildnum="${buildurl##*\%28}"
+    while read buildurl; do
+        if [[ "$buildurl" =~ /$ ]]; then
+            buildurl=${buildurl::-1}
+        fi
+        revision=$(echo "$buildurl" | egrep -o "r?[0-9]+%40main")
+        revision=${revision/\%40/\@}
+        buildnum=$(echo "$buildurl" | egrep -o "%28[0-9]+%29")
+        buildnum=${buildnum/\%28/}
+        buildnum=${buildnum/\%29/}
         filedownload="full_results_${revision}_b${buildnum}.json"
-        downloadurl="${webkitresultsurl}/${webkitbot}/${buildurl}%29/full_results.json"
+        downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${buildurl}/full_results.json"
         tries=1
         while true; do
             if grep -qx "${revision}_b${buildnum}" "${alreadytried}"; then
@@ -111,6 +124,6 @@ for webkitbot in "${webkitbots_values[@]}"; do
             curl -L -s "${downloadurl}" -o "${filedownload}"
             tries=$(( ${tries} + 1 ))
         done
-    done
+    done <<< $(get_results "$webkitbot")
     cd ..
 done
