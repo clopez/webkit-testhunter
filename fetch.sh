@@ -2,10 +2,13 @@
 #  Carlos Alberto Lopez Perez <clopez@igalia.com>
 set -eu
 
+WEBKIT_RESULTS_URL="https://build.webkit.org/results"
+
 usage () {
    local exit_code="$1"
+   local program_name=$(basename "$0")
 
-   echo "fetch.sh [BOT] ..."
+   echo "Usage: $program_name [BOT] ..."
    echo "Retrieves tests data from a set of bots. In case no bot is set, data is retrieved from all bots."
    echo ""
    echo "ARGUMENTS:"
@@ -14,11 +17,20 @@ usage () {
    exit $exit_code
 }
 
+fatal() {
+    echo "Fatal: $@"
+    exit 1
+}
+
 urlencode () {
     python -c "import urllib; print urllib.quote(\"${@}\")"
 }
 
-WEBKIT_RESULTS_URL="https://build.webkit.org/results"
+get_results() {
+    local webkitbot="$1"
+
+    curl -L -s "${WEBKIT_RESULTS_URL}/${webkitbot}/" | grep "href=" | grep "main" | sed -r 's|.*="(.*)".*|\1|' | sort -u
+}
 
 # The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
 # The others were the names of this test bot in the past.
@@ -44,30 +56,29 @@ for each in "${webkitbots_map[@]}"; do
    webkitbots_values+=( "$each" )
 done
 
-if [[ $# -gt 0 ]]; then
-   # Check any of the arguments is help.
-   for arg in "$@"; do
-      if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-         usage 0
-      fi
-   done
+parse_args() {
+    if [[ $# -eq 0 ]]; then
+        return
+    fi
+
+    # Check any of the arguments is help.
+    for arg in "$@"; do
+        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            usage 0
+        fi
+    done
 
    # Parse arguments.
    webkitbots_values=()
    for arg in "$@"; do
-      if [[ ! " ${webkitbots_keys[@]} " =~ " $arg " ]]; then
-         echo "Error: Invalid argument: '$arg'"
-         exit 1
-      fi
-      webkitbots_values+=( "${webkitbots_map[$arg]}" )
+       if [[ ! " ${webkitbots_keys[@]} " =~ " $arg " ]]; then
+           fatal "Invalid argument: '$arg'"
+       fi
+       webkitbots_values+=( "${webkitbots_map[$arg]}" )
    done
-fi
-
-get_results() {
-    local webkitbot="$1"
-
-    curl -L -s "${WEBKIT_RESULTS_URL}/${webkitbot}/" | grep "href=" | grep "main" | sed -r 's|.*="(.*)".*|\1|' | sort -u
 }
+
+parse_args "$@"
 
 alreadytried=".cache_already_tried"
 islegacybot=".is_legacy_bot"
