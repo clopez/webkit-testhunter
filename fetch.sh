@@ -2,6 +2,11 @@
 #  Carlos Alberto Lopez Perez <clopez@igalia.com>
 set -eu
 
+fatal() {
+    echo "Fatal: $@"
+    exit 1
+}
+
 usage () {
    local exit_code="$1"
 
@@ -17,6 +22,12 @@ usage () {
 urlencode () {
     python -c "import urllib; print urllib.quote(\"${@}\")"
 }
+
+print_revision_from_json_results () {
+    python -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
+}
+
+
 webkitresultsurl="http://build.webkit.org/results"
 
 # The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
@@ -77,38 +88,44 @@ for webkitbot in "${webkitbots_values[@]}"; do
         echo -e "\nFetching results for bot: ${webkitbot}"
     fi
     test -f "${alreadytried}" || touch "${alreadytried}"
+    tempjsonresultfile="$(mktemp)"
     webkitbot="$(urlencode "${webkitbot}")"
-    curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep "href=" | grep -Po 'r[0-9]+%20%28[0-9]+%29' | awk -F'%29' '{print $1}' | sort | uniq | while read buildurl; do
-        revision="${buildurl%%\%*}"
-        buildnum="${buildurl##*\%28}"
-        filedownload="full_results_${revision}_b${buildnum}.json"
-        downloadurl="${webkitresultsurl}/${webkitbot}/${buildurl}%29/full_results.json"
+    curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep -P "href=\"[^\"]+/"| cut -d\" -f2 | grep -v  "\.\./" | sort | uniq | while read resultsdir; do
+        downloadurl="${webkitresultsurl}/${webkitbot}/${resultsdir}full_results.json"
         tries=1
         while true; do
-            if grep -qx "${revision}_b${buildnum}" "${alreadytried}"; then
+            if grep -qx "${resultsdir}" "${alreadytried}"; then
                 echo -n "."
                 break
             fi
-            if test -f "${filedownload}" && grep -qP "^ADD_RESULTS\(.*\);$" "${filedownload}" ; then
-                # got it right
+            if test -f "${tempjsonresultfile}" && grep -qP "^ADD_RESULTS\(.*\);$" "${tempjsonresultfile}" ; then
+                # Get the revision number from the json data and move the file to its place.
+                # Is important that the file in disk is stored as "r${revision}_b${buildnumber}" because the
+                # python wktesthunter code assumes that the revision on the filename is right.
+                buildnum="$(echo ${resultsdir}| awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')"
+                revision="$(print_revision_from_json_results ${tempjsonresultfile})"
+                echo -n "r${revision}... "
+                # Sanity checks
+                echo "${buildnum}" | grep -Pq "^[0-9]+$" || fatal "Buildnum should be numeric and I got buildnum \"${buildnum}\" for ${downloadurl}"
+                echo "${revision}" | grep -Pq "^[0-9]+$" || fatal "Revision should be numeric and I got revision \"${revision}\" for ${downloadurl}"
+                mv "${tempjsonresultfile}" "full_results_r${revision}_b${buildnum}.json"
+                # store the resultsdir on the cache to not retry this download
                 echo -n ":"
-                echo "${revision}_b${buildnum}" >> "${alreadytried}"
+                echo "${resultsdir}" >> "${alreadytried}"
                 break
             fi
             if [[ ${tries} -gt 3 ]]; then
                 httpcode="$(curl -L -w "%{http_code}" -s "${downloadurl}" -o /dev/null)"
                 if [[ "${httpcode}" == "404" ]]; then
-                    echo "${revision}_b${buildnum}" >> "${alreadytried}"
+                    echo "${resultsdir}" >> "${alreadytried}"
                 fi
                 echo -e "\nERROR: After ${tries} tries I was unable to fetch resource: ${downloadurl}. HTTP Error code was: ${httpcode}"
-                rm -f "${filedownload}"
                 break
             fi
             #echo "Downloading results for revision $revision buildnum $buildnum ..."
             [[ ${tries} -eq 1 ]] && echo
-            echo -n "${revision}... "
-            rm -f "${filedownload}"
-            curl -L -s "${downloadurl}" -o "${filedownload}"
+            rm -f "${tempjsonresultfile}"
+            curl -L -s "${downloadurl}" -o "${tempjsonresultfile}"
             tries=$(( ${tries} + 1 ))
         done
     done
