@@ -2,7 +2,9 @@
 #  Carlos Alberto Lopez Perez <clopez@igalia.com>
 set -eu
 
-fatal() {
+WEBKIT_RESULTS_URL="http://build.webkit.org/results"
+
+fatal () {
     echo "Fatal: $@"
     exit 1
 }
@@ -27,8 +29,11 @@ print_revision_from_json_results () {
     python -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
 }
 
+fetch_bot_results () {
+    local webkitbot="$1"
 
-webkitresultsurl="http://build.webkit.org/results"
+    curl -L -s "${WEBKIT_RESULTS_URL}/${webkitbot}/" | grep -P "href=\"[^\"]+/"| cut -d\" -f2 | grep -v  "\.\./" | sort -u
+}
 
 # The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
 # The others were the names of this test bot in the past.
@@ -90,8 +95,8 @@ for webkitbot in "${webkitbots_values[@]}"; do
     test -f "${alreadytried}" || touch "${alreadytried}"
     tempjsonresultfile="$(mktemp)"
     webkitbot="$(urlencode "${webkitbot}")"
-    curl -L -s "${webkitresultsurl}/${webkitbot}/" | grep -P "href=\"[^\"]+/"| cut -d\" -f2 | grep -v  "\.\./" | sort | uniq | while read resultsdir; do
-        downloadurl="${webkitresultsurl}/${webkitbot}/${resultsdir}full_results.json"
+    while read resultsdir; do
+        downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${resultsdir}full_results.json"
         tries=1
         while true; do
             if grep -qx "${resultsdir}" "${alreadytried}"; then
@@ -128,6 +133,6 @@ for webkitbot in "${webkitbots_values[@]}"; do
             curl -L -s "${downloadurl}" -o "${tempjsonresultfile}"
             tries=$(( ${tries} + 1 ))
         done
-    done
+    done <<< $(fetch_bot_results "$webkitbot")
     cd ..
 done
