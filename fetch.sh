@@ -4,6 +4,24 @@ set -eu
 
 WEBKIT_RESULTS_URL="http://build.webkit.org/results"
 
+# The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
+# The others were the names of this test bot in the past.
+# We fetch all the data from the actual test bot as also the past ones, to have a complete history
+declare -A webkitbots_map
+webkitbots_map=(
+   ["gtk-release-old"]="GTK-Linux-64-bit-Release"
+   ["gtk-release-wk2"]="GTK-Linux-64-bit-Release-WK2-Tests"
+   ["gtk-release"]="GTK-Linux-64-bit-Release-Tests"
+   ["gtk-debug"]="GTK-Linux-64-bit-Debug-Tests"
+   ["gtk-release-wayland"]="GTK-Linux-64-bit-Release-Wayland-Tests"
+   ["gtk-release-gtk4"]="GTK-Linux-64-bit-Release-GTK4-Tests"
+   ["gtk-release-skip-failing"]="GTK-Linux-64-bit-Release-Skip-Failing-Tests"
+   ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
+   ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
+)
+
+webkitbots_values=("${webkitbots_map[@]}")
+
 fatal () {
     echo "Fatal: $@"
     exit 1
@@ -11,12 +29,13 @@ fatal () {
 
 usage () {
    local exit_code="$1"
+   local program_name=$(basename "$0")
 
-   echo "fetch.sh [BOT] ..."
+   echo "$program_name [BOT] ..."
    echo "Retrieves tests data from a set of bots. In case no bot is set, data is retrieved from all bots."
    echo ""
    echo "ARGUMENTS:"
-   echo -e "\tBOT\tgtk-release, gtk-debug, wpe-release, wpe-debug, gtk-release-old, gtk-release-wk2, gtk-release-wayland"
+   echo -e "\tBOT\t${!webkitbots_map[@]}"
 
    exit $exit_code
 }
@@ -35,48 +54,27 @@ fetch_bot_results () {
     curl -L -s "${WEBKIT_RESULTS_URL}/${webkitbot}/" | grep -P "href=\"[^\"]+/"| cut -d\" -f2 | grep -v  "\.\./" | sort -u
 }
 
-# The GTK test bot is now "GTK Linux 64-bit Release (Tests)".
-# The others were the names of this test bot in the past.
-# We fetch all the data from the actual test bot as also the past ones, to have a complete history
-declare -A webkitbots_map
-webkitbots_map=(
-   ["gtk-release-old"]="GTK-Linux-64-bit-Release"
-   ["gtk-release-wk2"]="GTK-Linux-64-bit-Release-WK2-Tests"
-   ["gtk-release"]="GTK-Linux-64-bit-Release-Tests"
-   ["gtk-debug"]="GTK-Linux-64-bit-Debug-Tests"
-   ["gtk-release-wayland"]="GTK-Linux-64-bit-Release-Wayland-Tests"
-   ["gtk-release-gtk4"]="GTK-Linux-64-bit-Release-GTK4-Tests"
-   ["gtk-release-skip-failing"]="GTK-Linux-64-bit-Release-Skip-Failing-Tests"
-   ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
-   ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
-)
-webkitbots_keys=()
-for each in "${!webkitbots_map[@]}"; do
-   webkitbots_keys+=( "$each" )
-done
-webkitbots_values=()
-for each in "${webkitbots_map[@]}"; do
-   webkitbots_values+=( "$each" )
-done
+parse_args () {
+    local values=()
+    for arg in $@; do
+        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            usage 0
+        elif [[ "$arg" == -* ]]; then
+            fatal "Unrecognized option: '$arg'"
+        # Is a valid bot identifier?
+        elif [[ " ${!webkitbots_map[@]} " =~ " $arg " ]]; then
+            values+=( "${webkitbots_map[$arg]}" )
+        else
+            fatal "Invalid argument: '$arg'"
+        fi
+    done
+    # Override default webkitbots_values.
+    if [[ ${#values[@]} -gt 0 ]]; then
+        webkitbots_values=("${values[@]}")
+    fi
+}
 
-if [[ $# -gt 0 ]]; then
-   # Check any of the arguments is help.
-   for arg in "$@"; do
-      if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-         usage 0
-      fi
-   done
-
-   # Parse arguments.
-   webkitbots_values=()
-   for arg in "$@"; do
-      if [[ ! " ${webkitbots_keys[@]} " =~ " $arg " ]]; then
-         echo "Error: Invalid argument: '$arg'"
-         exit 1
-      fi
-      webkitbots_values+=( "${webkitbots_map[$arg]}" )
-   done
-fi
+parse_args $@
 
 alreadytried=".cache_already_tried"
 islegacybot=".is_legacy_bot"
