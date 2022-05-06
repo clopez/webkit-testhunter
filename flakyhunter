@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+import argparse
+import subprocess
+import signal
+import sys
+import os
+import multiprocessing
+
+from hunterpy.definitions import bots, NOERROR, UNKNOWN
+from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
+from hunterpy.utils import OptionalColorText, sigterm_this_process
+
+from collections import Counter
+
+
+def get_percent(part, total):
+    return float(100) * float(part) / float(total)
+
+
+def get_percent_str(part, total):
+    percent_part = get_percent(part, total)
+    return "%d%%" % int(percent_part) if percent_part.is_integer() else "%.1f%%" % percent_part
+
+
+
+class LocalGitWebKitRepoInfoChecker():
+
+    def __init__(self, webkitdir):
+        self.webkitdir = webkitdir
+        if not os.path.isdir(webkitdir):
+            raise ValueError('%s is not a directory' % webkitdir)
+        if not os.path.isdir(os.path.join(webkitdir, 'LayoutTests')):
+            raise ValueError('No LayoutTest subdir inside %s' % webkitdir)
+
+    def test_or_expectations_modified_in_range(self, test_path):
+        curdir = os.getcwd()
+        os.chdir(self.webkitdir)
+        try:
+            # First populate the array with the usual names, because the test or the expectation can have been removed so better to not rely on the file beeing stil there.
+            paths_to_check = [ os.path.join('LayoutTests', test_path) ]
+            suffix = test_path[test_path.rfind('.'):]
+            test_path_without_suffix = test_path[:test_path.rfind(suffix) ]
+            paths_to_check.append(os.path.join('LayoutTests', test_path_without_suffix + '-expected.txt'))
+            paths_to_check.append(os.path.join('LayoutTests', test_path_without_suffix + '-expected' + suffix))
+            for platform in ['gtk','gtk-wayland', 'gtk4', 'wpe', 'glib', 'wk2', 'mac', 'mac-wk2', 'ios', 'ios-wk2']:
+                paths_to_check.append(os.path.join('LayoutTests', 'platform', platform, test_path_without_suffix + '-expected.txt'))
+                paths_to_check.append(os.path.join('LayoutTests', 'platform', platform, test_path_without_suffix + '-expected' + suffix))
+            # Now search the FS for matched expectations
+            for dirpath, dirs, files in os.walk('LayoutTests'):
+                for file in files:
+                    path_file = os.path.join(dirpath, file)
+                    if (test_path_without_suffix + '-expected') in path_file:
+                        if path_file not in paths_to_check:
+                            paths_to_check.append(path_file)
+            # 1. Check if any of this files was modified in the interval
+            gitcmd = ['git', 'log', '-1', '%s..%s' % (self.start_git_rev, self.end_git_rev), '--']
+            gitcmd.extend(paths_to_check)
+            outgit = None
+            errgit = None
+            gitreturncode = None
+            pgit = subprocess.Popen(gitcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.webkitdir)
+            (outgit, errgit) = pgit.communicate()
+            gitreturncode = pgit.returncode
+            if gitreturncode == 0 and len(errgit) == 0:
+                if len(outgit) > 0:
+                    print ('# Skipping to mark test "%s" as flaky because it was modified on the interval checked' %test_path)
+                    return True
+
+            # 2. Check if the test name was modified inside the TestExpectation files on the interval
+            expectation_files = []
+            for dirpath, dirs, files in os.walk('LayoutTests'):
+                for file in files:
+                    if file == 'TestExpectations':
+                        expectation_files.append(os.path.join(dirpath, file))
+            assert(len(expectation_files) > 4)
+            gitcmd = ['git', 'log', '-S', test_path, '-1', '%s..%s' % (self.start_git_rev, self.end_git_rev), '--']
+            gitcmd.extend(expectation_files)
+            outgit = None
+            errgit = None
+            gitreturncode = None
+            pgit = subprocess.Popen(gitcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (outgit, errgit) = pgit.communicate()
+            gitreturncode = pgit.returncode
+            if gitreturncode == 0 and len(errgit) == 0:
+                if len(outgit) > 0:
+                    print ("[GIT] Detected test path %s modified inside TestExpectation files" % test_path)
+                    return True
+
+            return False
+        finally:
+            os.chdir(curdir)
+
+
+    def svnrev_to_githash(self, svn_rev):
+        gitcmd = ['git', 'log', '-1', '--grep', 'trunk@%s ' % svn_rev, '--pretty=format:%H']
+        pgit = subprocess.Popen(gitcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.webkitdir)
+        (outgit, errgit) = pgit.communicate()
+        gitreturncode = pgit.returncode
+        if gitreturncode == 0 and len(errgit) == 0:
+            githash = outgit.decode('utf8').strip()
+            if len(githash) > 3:
+                return githash
+        raise RuntimeError('Something unexpected happened with the git cmd when trying to find the git hash for svn rev r%s".\nThe git command returned status %s output was "%s" and stderr was "%s"\nTry to checkout the main branch and pull.' %(svn_rev, gitreturncode, outgit, errgit))
+
+
+    def set_svnrange_search(self, start_rev, end_rev):
+        self.start_git_rev = self.svnrev_to_githash(start_rev)
+        self.end_git_rev = self.svnrev_to_githash(end_rev)
+
+
+def calculate_flakiness_factor(results):
+    flakiness_factor = 0
+    prev_result = results[0]
+    for result in results:
+        # If in a run it got two results means it was already flaky in that run
+        if ' ' in result:
+            flakiness_factor += 1
+        if result != prev_result:
+            flakiness_factor += 1
+        prev_result = result
+    return get_percent(flakiness_factor, len(results))
+
+
+def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, printprogress, args_min_percent, args_max_percent, args_flakiness, webkitdir):
+
+    maybe_color = OptionalColorText(usecolor)
+
+    print("Analyzing test results for the last %s runs of the bot %s..." %(number_of_runs, bot_key_name))
+    if 'skip-failing' in bot_key_name:
+        print(maybe_color.red('Results for "skip-failing" are incomplete because this bot skips tests already marked. So this will only report entries to add (not to modify).'))
+
+    results_parser = ResultsParser(bot_key_name, processes, 1, None, printprogress, debug)
+
+
+    revisions_with_runs, tests = results_parser.get_list_of_failed_tests_at_last_n_runs(number_of_runs)
+    start_rev = int(revisions_with_runs[0])
+    end_rev = int(revisions_with_runs[-1])
+    assert (len(revisions_with_runs) == number_of_runs)
+    print("Got %s test results for %s runs  in the range [r%d-r%d]" %(len(tests), number_of_runs, start_rev, end_rev))
+
+
+    initial_number_tests = len(tests)
+    tests_to_check = {}
+    expected_result_for_tests = {}
+    actual_results_for_tests = {}
+    flakiness_factor_for_tests = {}
+    revisions_for_results_for_tests = {}
+
+    # Select early only the tests that will be passed to git since that is really slow
+    for test in tests:
+        number_of_unexpected_results = 0
+        expectations_changed = False
+        for revision in tests[test]:
+            if test in expected_result_for_tests:
+                if expected_result_for_tests[test] != tests[test][revision]['expected']:
+                    expectations_changed = True # ignore tests were the expected value changed along the runs examined (this indicates someone tunned the expectations)
+            else:
+                expected_result_for_tests[test] = tests[test][revision]['expected']
+
+            if ResultsInterpreter.is_result_for_test_unexpected(tests[test][revision]):
+                number_of_unexpected_results += 1
+
+        if expectations_changed:
+            print("Skipping test %s because the value of the expected results was modified in the range [r%d-r%d]" %(test, start_rev, end_rev))
+            continue
+
+        if number_of_unexpected_results == 0:
+            print("Skipping test %s because all the results matched the expectation in range [r%d-r%d]" %(test, start_rev, end_rev))
+            continue
+
+        percent_failed_expectation = get_percent(number_of_unexpected_results, number_of_runs)
+        assert (percent_failed_expectation >= 0)
+        assert (percent_failed_expectation <= 100)
+        if percent_failed_expectation < args_min_percent :
+            print("Skipping test %s because it failed %s%% times in the range [r%d-r%d] and --min is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_min_percent))
+            continue
+        if percent_failed_expectation > args_max_percent :
+            print("Skipping test %s because it failed %s%% times in the range [r%d-r%d] and --max is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_max_percent))
+            continue
+
+
+        assert(test not in actual_results_for_tests)
+        actual_results_for_tests[test] = []
+        revisions_for_results_for_tests[test] = {}
+        for revision in revisions_with_runs:
+            if revision in tests[test]:
+                test_result = tests[test][revision]['result']
+            else:
+                # Assume that no reported entries means either test passed or expectations matched
+                test_result = expected_result_for_tests[test]
+
+            actual_results_for_tests[test].append(test_result)
+            if test_result not in revisions_for_results_for_tests[test]:
+                revisions_for_results_for_tests[test][test_result] = []
+            revisions_for_results_for_tests[test][test_result].append("r%s" % revision)
+
+
+        assert(len(actual_results_for_tests[test]) == number_of_runs)
+
+        assert(test not in flakiness_factor_for_tests)
+
+        flakiness_factor_for_tests[test] = calculate_flakiness_factor (actual_results_for_tests[test])
+        if args_flakiness > flakiness_factor_for_tests[test]:
+            print("Skipping test %s because it has a flakiness factor of %s%% in the range [r%d-r%d] and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], start_rev, end_rev, args_flakiness))
+            continue
+
+        tests_to_check[test] = tests[test]
+
+
+    # Likely lot of tests are filtered now, so calling git on them for further checking is more cheap.
+    tests = tests_to_check
+
+    if webkitdir:
+        print(maybe_color.bold("Getting info from git for %s tests in the revision range [r%d-r%d]. This can be slow, please wait." %(len(tests), start_rev, end_rev)))
+        local_git_webkit = LocalGitWebKitRepoInfoChecker(webkitdir)
+        local_git_webkit.set_svnrange_search(start_rev, end_rev)
+        pool = multiprocessing.Pool(processes=processes)
+        modified_tests_index_in_range = pool.map(local_git_webkit.test_or_expectations_modified_in_range, tests)
+        # Filter tests further with the git data
+        tests_to_check = {}
+        id_test = -1
+        for test in tests:
+            id_test += 1
+            if modified_tests_index_in_range[id_test]:
+                print("Skipping test %s because GIT reported modifications related to it in the range [r%d-r%d]" %(test, start_rev, end_rev))
+                continue
+            tests_to_check[test] = tests[test]
+        tests = tests_to_check
+    else:
+        modified_tests_index_in_range = [ False for test in tests ]
+        print(maybe_color.red("No gathering info about modified tests in the revision range [r%d-r%d]. Results will be less fiable. Please pass --webkitdir /path/to/webkit/gitrepo to enable." %(start_rev, end_rev)))
+
+
+    print(maybe_color.bold("Reporting %s tests with unexpected results from an initial set of %s tests for %s runs in the interval [r%d-r%d]" %(len(tests), initial_number_tests, number_of_runs, start_rev, end_rev)))
+    report_to_add_new_expectations_text = ""
+    report_to_modify_expectations_text = ""
+    number_of_expectations_to_add = 0
+    number_of_expectations_to_modify = 0
+
+
+    # We have now in tests the final list of filtered tests. Report the values.
+    for test in tests:
+        # Report new expectations
+        if expected_result_for_tests[test] == 'PASS':
+            number_of_expectations_to_add += 1
+            desired_expectations = set()
+            for result in actual_results_for_tests[test]:
+                for subresult in result.split(' '):
+                    desired_expectations.add(subresult)
+            report_to_add_new_expectations_text += ("%s [ %s ]\n" %(maybe_color.bold(test), maybe_color.bold(' '.join(sorted(desired_expectations)))))
+            if flakiness_factor_for_tests[test] > 9:
+                report_to_add_new_expectations_text += maybe_color.red("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
+            else:
+                report_to_add_new_expectations_text += maybe_color.bold("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
+            counted_test_results = Counter(actual_results_for_tests[test])
+            for test_result in counted_test_results:
+                str_revisions_failed = ''
+                if test_result in revisions_for_results_for_tests[test]:
+                    if len(revisions_for_results_for_tests[test][test_result]) > 0:
+                        str_revisions_failed = '[ %s ]' % ' '.join(revisions_for_results_for_tests[test][test_result])
+                report_to_add_new_expectations_text += ("#  {:<22} ->  {} {}\n".format("%d times [%s]" % (counted_test_results[test_result],get_percent_str(counted_test_results[test_result], number_of_runs)), test_result, str_revisions_failed))
+            report_to_add_new_expectations_text += ("\n")
+        # Report expectations to be modified
+        else:
+            number_of_expectations_to_modify += 1
+            desired_expectations = set()
+            for result in actual_results_for_tests[test]:
+                for subresult in result.split(' '):
+                    desired_expectations.add(subresult.strip())
+            if list(desired_expectations) == ['PASS']:
+                report_to_modify_expectations_text +="\n%s\n#  Passing always in the range [r%d-r%d]. Please check further in the range and maybe remove expectations\n\n" %(maybe_color.bold(test), start_rev, end_rev)
+                continue
+            report_to_modify_expectations_text += maybe_color.red("-%s [ %s ]\n" %(test, expected_result_for_tests[test]))
+            report_to_modify_expectations_text += maybe_color.green("+%s [ %s ]\n" %(test, ' '.join(sorted(desired_expectations))))
+            if flakiness_factor_for_tests[test] > 9:
+                report_to_modify_expectations_text += maybe_color.red("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
+            else:
+                report_to_modify_expectations_text += maybe_color.bold("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
+            counted_test_results = Counter(actual_results_for_tests[test])
+            for test_result in counted_test_results:
+                str_revisions_failed = ''
+                if test_result in revisions_for_results_for_tests[test]:
+                    if len(revisions_for_results_for_tests[test][test_result]) > 0:
+                        str_revisions_failed = '[ %s ]' % ' '.join(revisions_for_results_for_tests[test][test_result])
+                report_to_modify_expectations_text += ("#  {:<22} ->  {} {}\n".format("%d times [%s]" % (counted_test_results[test_result],get_percent_str(counted_test_results[test_result], number_of_runs)), test_result, str_revisions_failed))
+            report_to_modify_expectations_text += ("\n")
+
+    if len(report_to_add_new_expectations_text) > 2:
+        print("\n\n")
+        print(maybe_color.bold("###############################################################"))
+        print(maybe_color.bold("################### %s EXPECTATIONS TO ADD ####################" % number_of_expectations_to_add))
+        print(maybe_color.bold("###############################################################\n"))
+        print(report_to_add_new_expectations_text)
+    if len(report_to_modify_expectations_text) > 2:
+        print("\n\n")
+        print(maybe_color.bold("###############################################################"))
+        print(maybe_color.bold("################## %s EXPECTATIONS TO MODIFY ##################" % number_of_expectations_to_modify))
+        print(maybe_color.bold("###############################################################\n"))
+        print(report_to_modify_expectations_text)
+
+    if not webkitdir:
+        print(maybe_color.bold('# NOTE: To make this results more reliable pass "--webkitdir /path/to/your/webkit/checkout" to this script'))
+
+if __name__ == '__main__':
+    import multiprocessing as mp
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", help="Print debug messages.", action="store_true")
+    parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
+    parser.add_argument("--min", help="Only show tests with unexpected results higher than in MIN%% of the runs. Default is 10%%", type=float, default=10)
+    parser.add_argument("--max", help="Don't show tests with unexpected results lower than in MAX%% of the runs. Default is 100%%", type=float, default=100)
+    parser.add_argument("--flakiness", help="Don't show tests with a flakiness factor lower than FLAKINESS%%. Flakiness factor is defined as the percent of times the result changed from one run to the next one. Default is 0%%", type=float, default=0)
+    parser.add_argument("--webkitdir", help="Path to the local git repository of WebKit. Will enable checking local history to discard tests modified in the interval")
+    parser.add_argument("--noprintprogress", help="Don't print percentage progress of computations..", action="store_true")
+    parser.add_argument("--bot", help="Check the flakies for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
+    parser.add_argument("-j", type=int, help="Number of processes to use. Default is the number of cores of this machine.", default=mp.cpu_count())
+    parser.add_argument('--depth', help='Search in only the last X revisions known for bot. Default is 10.', default=10)
+    args = parser.parse_args()
+
+    if args.noprintprogress: args_printprogress = False
+    else: args_printprogress = sys.stderr.isatty()
+
+    # Exit inmediately on CTRL+C or broken-pipe situations.
+    signal.signal(signal.SIGINT, sigterm_this_process)
+    signal.signal(signal.SIGPIPE, sigterm_this_process)
+
+
+    if args.min < 0 or args.min > 100:
+        raise ValueError('--min should be a value between 0 and 100')
+    if args.max < 0 or args.max > 100:
+        raise ValueError('--max should be a value between 0 and 100')
+    if args.min >= args.max:
+        raise ValueError('--min should be a lower value than --max')
+    if args.flakiness < 0 or args.flakiness > 100:
+        raise ValueError('--flakiness should be a value between 0 and 100')
+
+    flaky_hunter(args.bot, int(args.depth), int(args.j), args.debug, not args.nocolor, args_printprogress, float(args.min), float(args.max), float(args.flakiness), args.webkitdir)

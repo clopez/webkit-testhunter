@@ -1,5 +1,4 @@
 #!/bin/bash
-#  Carlos Alberto Lopez Perez <clopez@igalia.com>
 set -eu
 
 WEBKIT_RESULTS_URL="http://build.webkit.org/results"

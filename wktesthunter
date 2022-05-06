@@ -1,45 +1,17 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-#
-#  Copyright 2014 Igalia S.L.
-#  Carlos Alberto Lopez Perez <clopez@igalia.com>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
+#!/usr/bin/env python3
 
-# Run with python3 if available (is faster)
 import sys
-import os
-try:
-    if sys.version_info[0] < 3:
-        os.execvp('python3', ['python3', __file__] + sys.argv[1:])
-except:
-    # No python3 :(
-    pass
-
 import argparse
-import json
-import math
+
 import re
 import subprocess
 import signal
-import time
-import multiprocessing as mp
 
-from collections import OrderedDict
-from multiprocessing import Pool
 from collections import Counter
+
+from hunterpy.definitions import bots, NOERROR, UNKNOWN
+from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
+from hunterpy.utils import OptionalColorText, sigterm_this_process
 
 extrahelp = '''
 About the colors:
@@ -92,11 +64,10 @@ Note for lazy people:
       "--onlyprinterr", "--only" or "--o"; or you can use "--mergeunknown", "--merge" or "--m"
 '''
 
-noerror="NOERROR"
-unknown="UNKNOWN"
 
-def iprint(firstrev,lastrev,result,startcolor):
 
+
+def interval_print(firstrev, lastrev, result, startcolor):
     if lastrev == None:
         startstr=("r%d" %firstrev)
     else:
@@ -111,255 +82,67 @@ def iprint(firstrev,lastrev,result,startcolor):
     print('%s%s%s%s%s' %(startcolor,startstr," "*(30-len(startstr)),result,endcolor))
 
 
-
-bots = { # The reason to have more than one entry per bot is that some bots where renamed along the history.
-    'gtk-release' : ["GTK-Linux-64-bit-Release", "GTK-Linux-64-bit-Release-WK2-Tests", "GTK-Linux-64-bit-Release-Tests"],
-    'gtk-debug' : ["GTK-Linux-64-bit-Debug-Tests"],
-    'gtk-release-wayland' : ["GTK-Linux-64-bit-Release-Wayland-Tests"],
-    'gtk-release-gtk4' : ["GTK-Linux-64-bit-Release-GTK4-Tests"],
-    'gtk-release-skip-failing': ["GTK-Linux-64-bit-Release-Skip-Failing-Tests"],
-    'wpe-release' : ["WPE-Linux-64-bit-Release-Tests"],
-    'wpe-debug' : ["WPE-Linux-64-bit-Debug-Tests"]
-}
-
-
-def get_revision_start_end(jsonresults, svnrev):
-    for jsonresult in jsonresults:
-        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-            rev_start = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
-            break
-    for jsonresult in jsonresults[::-1]:
-        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-            rev_end = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
-            break
-    if svnrev > rev_start:
-        rev_start = svnrev
-    return rev_start, rev_end
-
-
-def write_progress_message(text):
-    sys.stderr.write("\r\033[K") # reset line
-    sys.stderr.write(text)
-    sys.stderr.flush()
-
-
-def search(test, botdir, svnrev, jsonresults, shouldprint_progress = False):
-    ret = {}
-    testparts=test.split('/')
-    if shouldprint_progress:
-        rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
-        count = 0
-        percent_search = 0
-        threshold = len(jsonresults)/100
-        botname = botdir.split('/',1)[1]
-    for jsonresult in jsonresults:
-        if shouldprint_progress:
-            count += 1
-            if count >= threshold:
-                count = 1
-                percent_search += 1
-                if percent_search > 98 :
-                    write_progress_message("Searching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
-                else:
-                    write_progress_message("Searching: [r%s-r%s][%s] %s%%" % ((rev_start,rev_end,botname, percent_search)))
-        if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-            (revision, buildnumber) = jsonresult.split("full_results_")[1].split(".json")[0].split('_')
-            revision=int(revision.strip('r'))
-            if revision < svnrev:
-                if debug: print ("Skipping file %s because its rev number %s is lower than svnrev %s\n" %(jsonresult,revision,svnrev))
-                continue
-            buildnumber=int(buildnumber.strip('b'))
-            # Read file
-            json_file=open(os.path.join(botdir, jsonresult))
-            json_data=json_file.read()
-            json_file.close()
-            # Clean it
-            json_data=json_data.split('ADD_RESULTS(')[1]
-            json_data=json_data.split(');')[0]
-            # Parse it
-            try:
-                json_parsed = json.loads(json_data)
-            except:
-                if debug: print ('WARNING: Exception caused by file: %s Ignoring file.' % os.path.join(botdir, jsonresult))
-                continue
-
-            if debug and revision in ret:
-                print ("WARNING: Data for revision %d duplicated. Picking last\n" %revision)
-
-            ret[revision]={}
-
-            keytest=json_parsed['tests']
-            try:
-                for testpart in testparts:
-                    keytest=keytest[testpart]
-            except KeyError:
-                # This test didn't failed (or wasn't ran) on this rev.
-                if json_parsed['interrupted']:
-                    # If the whole set of tests didn't finished, mark it as unknown.
-                    if debug: print ("On revision %s the test set didn't finished." %(revision))
-                    ret[revision]['result']=unknown
-                else:
-                    # Otherwise, mark it as noerror.
-                    ret[revision]['result']=noerror
-                continue
-
-            ret[revision]['result']=keytest['actual']
-            if 'expected' in keytest:
-                ret[revision]['expected']=keytest['expected']
-    return ret
-
-def merge(dst, src):
-    for k,v in src.items():
-        dst[k] = v
-
-def maybe_bold(text, usecolor):
-    if usecolor:
-        return "\033[1m%s\033[0m" % text
-    return text
-
-def maybe_green(text, usecolor):
-    if usecolor:
-        return "\033[0;32m%s\033[0m" % text
-    return text
-
-def maybe_red(text, usecolor):
-    if usecolor:
-        return "\033[0;31m%s\033[0m" % text
-    return text
-
 def get_percent_str(part, total):
     percent_part = float(100) * float(part) / float(total)
     return "%d%%" % int(percent_part) if percent_part.is_integer() else "%.1f%%" % percent_part
 
-def _result_for_test_is_unexpected(test_data_result_and_expected):
-    if set(['expected', 'result']).issubset(test_data_result_and_expected.keys()):
-        for test_result in test_data_result_and_expected['result'].split(" "):
-            if ( (test_result not in test_data_result_and_expected['expected']) and # we check also for "[TEXT|IMAGE+TEXT|AUDIO]==FAIL"
-                ( (test_result not in ('TEXT', 'IMAGE+TEXT', 'AUDIO')) or ('FAIL' not in test_data_result_and_expected['expected']) ) ):
-                return True
-    return False
 
-def main(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes, maxdepthsearch, reportsummary):
-    resultsfortests = {}
-    resultsfortests[test]=OrderedDict()
-    testparts=test.split('/')
-    if len(testparts) < 2 or "." not in testparts[len(testparts)-1]:
-        raise ValueError("Test should be in the format path/test.html. Only one test accepted as parameter (no wildcards or directories)")
+# TODO:
+# - get advantage of flakyhunter new code and move this to reuse as much of possible of that (or merge both search paths somehow)
+# - also implement checking history from git to show on the waterfall when a revision changed something (not only when the test was added)
+def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes, limit_to_last_n_results, reportsummary):
 
-    outsvn = None
-    errsvn = None
-    svnreturncode = None
-    svnrev = 1
+    start_at_revision = 1
+    maybe_color = OptionalColorText(usecolor)
+
     if checksvn:
         try:
+            outsvn = None
+            errsvn = None
+            svnreturncode = None
             svncmd = ["svn", "log", "-r" ,"1:HEAD", "--limit", "1",
                       "https://svn.webkit.org/repository/webkit/trunk/LayoutTests/" + test ]
             psvn = subprocess.Popen( svncmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE )
             (outsvn, errsvn) = psvn.communicate()
             svnreturncode = psvn.returncode
             if svnreturncode == 0:
-                svnrev = outsvn.decode('utf8').splitlines()[1].split()[0]
+                start_at_revision = outsvn.decode('utf8').splitlines()[1].split()[0]
                 revregex = re.compile("^r[0-9]+$")
-                if revregex.match(svnrev):
-                    svnrev = int(svnrev[1:])
-                    if svnrev > 1:
-                        print ("INFO: From svn.webkit.org got that %s added this test." %(maybe_bold("r%d" % svnrev, usecolor)))
+                if revregex.match(start_at_revision):
+                    start_at_revision = int(start_at_revision[1:])
+                    if start_at_revision > 1:
+                        print ("INFO: From svn.webkit.org got that %s added this test." %(maybe_color.bold(("r%d" % start_at_revision))))
                 else:
-                    raise
+                    raise ValueError
             else:
-                raise
-        except:
+                raise ValueError
+        except (ValueError, FileNotFoundError) as error:
             print ("Got an exception while trying to check the first revision for the test %s\n" %(test))
             print ("Tried to run the following command: \"%s\"\n" %" ".join(svncmd))
             if svnreturncode is None:
-                print ("Check that svn is installed.")
+                print ("Check that the program \"svn\" is installed.")
             else:
-                print ("The return code was %d\n" %svnreturncode)
+                print ("The return code was %d\n" % svnreturncode)
                 if outsvn is not None:
-                    print ("The standard output was:\n%s\n" %outsvn.decode('utf8'))
+                    print ("The standard output was:\n%s\n" % outsvn.decode('utf8'))
                 if errsvn is not None:
-                    print ("The standard error was:\n%s\n" %errsvn.decode('utf8'))
+                    print ("The standard error was:\n%s\n" % errsvn.decode('utf8'))
             print ("Continuing without that information (assuming the first revision was r1)...\n\n")
-    if maxdepthsearch:
-        max_rev = 1
-        for bot in bots[botkey]:
-            botdir = os.path.join('jsonresults',bot)
-            if not os.path.isdir(botdir):
-                continue
-            jsonresults = os.listdir(botdir)
-            jsonresults.sort()
-            rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
-            if rev_end > max_rev:
-                max_rev = rev_end
-        min_rev = max_rev - maxdepthsearch
-        if min_rev < 1:
-            min_rev = 1
-        if min_rev > svnrev:
-            svnrev = min_rev
-            print ("INFO: Search limited to the last %s known revisions. Pass --all or --depth to search deeper." % maybe_bold(maxdepthsearch, usecolor))
 
 
-    for bot in bots[botkey]:
-        botdir = os.path.join('jsonresults',bot)
-        if not os.path.isdir(botdir):
-            print ("WARNING: Skipping bot %s without results fetched" %bot)
-            continue
-        jsonresults = os.listdir(botdir)
-        jsonresults.sort()
-        botname = botdir.split('/',1)[1]
-        rev_start, rev_end = get_revision_start_end(jsonresults, svnrev)
-        if svnrev > rev_end:
-            if debug: print("Skipped bot: [r%s-r%s][%s] (SVN first searched revision great than last result for bot)" % (rev_start,rev_end,botname))
-            continue
-        if processes == 1:
-            merge(resultsfortests[test], search(test, botdir, svnrev, jsonresults, printprogress))
-        else:
-            # Split job in several workers.
-            pool = Pool(processes=processes)
-            size = len(jsonresults)
-            stride = int(math.ceil(size/processes))
-            results = list()
-            for i in range(0, processes):
-                start, end = i*stride, (i+1)*stride
-                if end > size:
-                    end = size
-                results.append(pool.apply_async(search, (test, botdir, svnrev, jsonresults[start:end])))
-            # Join workers and merge results.
-            pool.close()
-            if printprogress:
-                while True:
-                    complete_count = sum(1 for x in results if x.ready())
-                    if complete_count == processes:
-                        write_progress_message("Searching: [r%s-r%s][%s] done" % (rev_start,rev_end,botname))
-                        break
-                    write_progress_message("Searching: [r%s-r%s][%s] %s%%" %(rev_start,rev_end,botname,int(complete_count*100/processes)))
-                    time.sleep(0.25)
-            pool.join()
-            for each in results:
-                merge(resultsfortests[test], each.get())
+    results_parser = ResultsParser(botkey, processes, start_at_revision, limit_to_last_n_results, printprogress, debug)
+    startrev, minrev, maxrev, resultsfortests = results_parser.get_results_for_tests([test])
+    print ('INFO: The revisions processed for the bot %s are on the interval %s' %
+           (maybe_color.bold(botkey), maybe_color.bold('[r%d-r%d]' %(startrev, maxrev))))
 
-    if printprogress: write_progress_message("") # reset write progress message
-    if len(resultsfortests[test]) == 0:
-        print ("ERROR: No revisions fetched for bot: %s Please run the fetch script." %botkey)
-        return
-    keys = list(resultsfortests[test].keys())
-    keys.sort()
-    minrev, maxrev = keys[0], keys[len(keys) - 1]
-    print ("INFO: The revisions processed for the bot %s are on the interval %s" %
-            (maybe_bold(botkey, usecolor), maybe_bold("[r%d-r%d]" %(minrev,maxrev), usecolor)))
-    startrev=max(minrev,svnrev)
-    if startrev > maxrev:
-        print ("The starting revision r%d is great than the last revision with data r%d" %(startrev,maxrev))
-        print ("Please fetch more data before continuing...")
-        return
-    lastprinted = unknown
+    lastprinted = UNKNOWN
     if mergeunknown:
-        lastprinted = "%s/%s" %(noerror, unknown)
-    lastrevprinted = svnrev-1
+        lastprinted = "%s/%s" %(NOERROR, UNKNOWN)
+    lastrevprinted = startrev - 1
     # trick to end the print the last interval on the loop.
     resultsfortests[test][maxrev+1]={}
     resultsfortests[test][maxrev+1]['result']='END'
-    print ("\nResults for bot %s and test: %s\n" %(maybe_bold(botkey,usecolor),maybe_bold(test,usecolor)))
+    print ("\nResults for bot %s and test: %s\n" %(maybe_color.bold(botkey),maybe_color.bold(test)))
     failed_expectations = []
     test_results = []
     number_of_completed_runs = 0
@@ -368,75 +151,73 @@ def main(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolo
     for revision in range(startrev,maxrev+2):
         if revision in resultsfortests[test]:
             toprint = resultsfortests[test][revision]['result']
-            if mergeunknown and (toprint == noerror or toprint == unknown):
-                toprint = "%s/%s" %(noerror, unknown)
+            if mergeunknown and (toprint == NOERROR or toprint == UNKNOWN):
+                toprint = "%s/%s" %(NOERROR, UNKNOWN)
             if showexpected and 'expected' in resultsfortests[test][revision]:
                 toprint = "%s (Expected: %s)" %(toprint,resultsfortests[test][revision]['expected'])
             if reportsummary:
-                # only count revisions were the bot finished the run (result != unknown)
-                if resultsfortests[test][revision]['result'] != unknown and resultsfortests[test][revision]['result'] != 'END':
+                # only count revisions were the bot finished the run (result != UNKNOWN)
+                if resultsfortests[test][revision]['result'] != UNKNOWN and resultsfortests[test][revision]['result'] != 'END':
                     number_of_completed_runs += 1
-                    if _result_for_test_is_unexpected(resultsfortests[test][revision]):
+                    if ResultsInterpreter.is_result_for_test_unexpected(resultsfortests[test][revision]):
                         failed_expectations.append(toprint)
                     test_results.append(resultsfortests[test][revision]['result'])
         else:
             if mergeunknown:
-                toprint = "%s/%s" %(noerror, unknown)
+                toprint = "%s/%s" %(NOERROR, UNKNOWN)
             else:
-                toprint = unknown
+                toprint = UNKNOWN
         if lastprinted == toprint:
             continue
         else:
             # On the loop for printing we print previous iteration (revision-1)
-            if detail or (lastprinted != unknown and lastprinted != noerror):
-                color=None
+            if detail or (lastprinted != UNKNOWN and lastprinted != NOERROR):
+                color = None
                 if usecolor:
                     # We are going to print. Choose the color
-                    if unknown not in lastprinted:
-                        color='\033[0;32m' # green
+                    if UNKNOWN not in lastprinted:
+                        color = '\033[0;32m' # green
                     if revision-1 in resultsfortests[test]:
-                        if _result_for_test_is_unexpected(resultsfortests[test][revision-1]):
-                            color='\033[0;31m' # red
+                        if ResultsInterpreter.is_result_for_test_unexpected(resultsfortests[test][revision-1]):
+                            color = '\033[0;31m' # red
                             if debug: print ('INFO: Marking test % as red on rev r%d, because actual result "%s" does not match the expectation "%s"'
                                         %(test, revision-1, resultsfortests[test][revision-1]['result'], resultsfortests[test][revision-1]['expected']))
 
-                if lastprinted != unknown or not ignoreunknown:
-                    if revision > svnrev:
+                if lastprinted != UNKNOWN or not ignoreunknown:
+                    if revision > startrev:
                         if revision-lastrevprinted > 2:
-                            iprint (lastrevprinted+1,revision-1,lastprinted,color)
+                            interval_print (lastrevprinted+1, revision-1, lastprinted, color)
                         else:
-                            iprint (revision-1,None,lastprinted,color)
-            lastrevprinted=revision-1
-            lastprinted=toprint
+                            interval_print (revision-1, None, lastprinted, color)
+            lastrevprinted = revision-1
+            lastprinted = toprint
     print("\n")
+
     if reportsummary:
         print ("The bot %s completed %s runs on the interval %s" % (
-            maybe_bold(botkey, usecolor),
-            maybe_bold(number_of_completed_runs, usecolor),
-            maybe_bold("[r%d-r%d]" % (minrev, maxrev), usecolor)))
+            maybe_color.bold(botkey),
+            maybe_color.bold(number_of_completed_runs),
+            maybe_color.bold("[r%d-r%d]" % (minrev, maxrev))))
         number_of_failed_runs = len(failed_expectations)
-        print ("Frecuency of results for test: %s" %(maybe_bold(test,usecolor)))
+        print ("Frecuency of results for test: %s" %(maybe_color.bold(test)))
         counted_test_results = Counter(test_results)
         for test_result in counted_test_results:
-            print(maybe_bold("  {:<22} ->  {}".format("%d times [%s]" % (counted_test_results[test_result],get_percent_str(counted_test_results[test_result], number_of_completed_runs)), test_result), usecolor ))
+            print(maybe_color.bold("  {:<22} ->  {}".format("%d times [%s]" % (counted_test_results[test_result],get_percent_str(counted_test_results[test_result], number_of_completed_runs)), test_result)))
         print ("")
         if number_of_failed_runs == 0:
-            print(maybe_green("All runs on the interval were sucessful (either the expectation was matched or the test passed", usecolor))
+            print(maybe_color.green("All runs on the interval were sucessful (either the expectation was matched or the test passed"))
         else:
-            print("Of those %s runs it didn't match the expectation %s times [%s]" % (maybe_bold(number_of_completed_runs, usecolor), maybe_bold(number_of_failed_runs, usecolor), maybe_bold(get_percent_str(number_of_failed_runs, number_of_completed_runs), usecolor)))
+            print("Of those %s runs it didn't match the expectation %s times [%s]" % (maybe_color.bold(number_of_completed_runs), maybe_color.bold(number_of_failed_runs), maybe_color.bold(get_percent_str(number_of_failed_runs, number_of_completed_runs))))
             print("Details of the type and frequency of unmatched expectations:")
             counted_failed_expectations = Counter(failed_expectations)
             for failed_expectation in counted_failed_expectations:
-                print(maybe_red("  {:<22} ->  {}".format("%d times [%s]" % (counted_failed_expectations[failed_expectation],get_percent_str(counted_failed_expectations[failed_expectation], number_of_completed_runs)), failed_expectation), usecolor ))
+                print(maybe_color.red("  {:<22} ->  {}".format("%d times [%s]" % (counted_failed_expectations[failed_expectation],get_percent_str(counted_failed_expectations[failed_expectation], number_of_completed_runs)), failed_expectation)))
 
     return 0
 
 
-def sigterm_this_process(signum, frame):
-    os.kill(os.getpid(), signal.SIGTERM)
-
-
 if __name__ == '__main__':
+    import multiprocessing as mp
 
     parser = argparse.ArgumentParser(epilog=extrahelp, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--debug", help="Print debug messages.", action="store_true")
@@ -458,28 +239,15 @@ if __name__ == '__main__':
     number_revisions.add_argument('--depth', help='Search in only the last X revisions known for bot. Default is 4000.', default=4000)
     args = parser.parse_args()
 
-    if args.debug: debug = True
-    else: debug = False
-    if args.onlyprinterr: detail = False
-    else: detail = True
-    if args.mergeunknown: mergeunknown = True
-    else: mergeunknown = False
-    if args.ignoreunknown: ignoreunknown = True;
-    else: ignoreunknown = False
-    if args.noshowexpected: showexpected = False
-    else: showexpected = True
-    if args.nocolor: usecolor = False
-    else: usecolor = True
-    if args.nochecksvn: checksvn = False
-    else: checksvn = True
-    if args.noprintprogress: printprogress = False
-    else: printprogress = sys.stderr.isatty()
-    if args.all: maxdepthsearch = None
-    elif args.depth: maxdepthsearch = int(args.depth)
-    if args.noreportsummary: reportsummary = False
-    else: reportsummary = True
+
+    args_should_printprogress = False if not args.noprintprogress else sys.stderr.isatty()
+    if args.all: args_limit_to_last_n_results = None
+    elif args.depth: args_limit_to_last_n_results = int(args.depth)
+
 
     # Exit inmediately on CTRL+C or broken-pipe situations.
     signal.signal(signal.SIGINT, sigterm_this_process)
     signal.signal(signal.SIGPIPE, sigterm_this_process)
-    main(args.test_name, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, checksvn, printprogress, args.bot, args.j, maxdepthsearch, reportsummary)
+    print_history_for_test(args.test_name, args.debug, not args.onlyprinterr, args.mergeunknown,
+                           args.ignoreunknown, not args.noshowexpected, not args.nocolor, not args.nochecksvn,
+                           not args_should_printprogress, args.bot, args.j, args_limit_to_last_n_results, not args.noreportsummary)

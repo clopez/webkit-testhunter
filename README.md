@@ -1,6 +1,8 @@
 # WebKit-TestHunter
-Small utiliy to parse the WebKit Layout Test results history and print
-all the results for a given test grouped by revision intervals.
+
+Utilities to parse the WebKit Layout Test results history and print
+the results for a given test grouped by revision intervals or detect
+tests that are flaky.
 
 Note: This tracks only the bots from the GTK and WPE ports of WebKit.
 However, support for other ports should be really easy to add (open an issue
@@ -20,7 +22,7 @@ the json files.
     there are no test results for them)
 
 
-# Hunt the results of a test
+# Check history of past results for a test
 
 * Typical usage:
 
@@ -28,4 +30,16 @@ the json files.
 
 * Use the `--bot` argument to select the bot you want to check.
 * Check `./wktesthunter -h` for additional help.
-* Note: This runs faster with python3. (will use it by default if is installed)
+
+
+# Detect flaky tests to be added to the TestExpectations file
+
+* Typical usage:
+
+  * `./flakyhunter`
+
+* Use the `--bot` argument to select the bot you want to check.
+* Use the `--webkitdir` argument to pass the path to your WebKit checkout.
+  This makes the script to discard tests that modified on the interval
+  checked.
+* Check `./flakyhunter -h` for additional help.
