@@ -93,7 +93,7 @@ for webkitbot in "${webkitbots_values[@]}"; do
     test -f "${alreadytried}" || touch "${alreadytried}"
     tempjsonresultfile="$(mktemp)"
     webkitbot="$(urlencode "${webkitbot}")"
-    while read resultsdir; do
+    fetch_bot_results "$webkitbot" | while read resultsdir; do
         downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${resultsdir}full_results.json"
         tries=1
         while true; do
@@ -131,6 +131,6 @@ for webkitbot in "${webkitbots_values[@]}"; do
             curl -L -s "${downloadurl}" -o "${tempjsonresultfile}"
             tries=$(( ${tries} + 1 ))
         done
-    done <<< $(fetch_bot_results "$webkitbot")
+    done
     cd ..
 done
