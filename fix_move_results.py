@@ -15,10 +15,15 @@ for command_file in VALID_COMMANDFILES:
         os.remove(command_file)
     if os.path.exists("do_diff_"+command_file):
         os.remove("do_diff_"+command_file)
+    if os.path.exists("do_rename_"+command_file):
+        os.remove("do_rename_"+command_file)
+    if os.path.exists("do_update_"+command_file):
+        os.remove("do_update_"+command_file)
 
 
 def write_new_updated_result(oldrevision, newrevision, filedata, bot, old_file_name, command_file_name):
     resultsbasedir = os.path.join(CURDIR, "jsonresults")
+    resultsbasedir_updated = os.path.join(CURDIR, "jsonresults_updated")
     filename_ending = "_".join(old_file_name.split("_")[3:])
     assert(filename_ending.startswith("b")) # buildnumber
     assert(filename_ending.endswith(".json"))
@@ -28,12 +33,16 @@ def write_new_updated_result(oldrevision, newrevision, filedata, bot, old_file_n
     assert(command_file_name in VALID_COMMANDFILES)
 
     previous_path = os.path.join(resultsbasedir, bot, old_file_name)
-    new_path = os.path.join(resultsbasedir, bot, new_file_name)
-    with open(command_file_name, "a") as command_file_object:
-        command_file_object.write("git rm %s\n" % previous_path)
-        command_file_object.write("git add %s\n" % new_path)
+    new_path_temp = os.path.join(resultsbasedir_updated, bot, new_file_name)
+    new_path_dest = os.path.join(resultsbasedir, bot, new_file_name)
+
+    with open("do_rename_"+command_file_name, "a") as command_file_object:
+        command_file_object.write('git mv "%s" "%s"\n' % (previous_path, new_path_dest))
+    with open("do_update_"+command_file_name, "a") as command_file_object:
+        command_file_object.write('mv "%s" "%s"\n' % (new_path_temp, new_path_dest))
+        command_file_object.write('git add "%s"\n' % new_path_dest)
     with open("do_diff_"+command_file_name, "a") as command_file_object:
-        command_file_object.write('diff -u <(sed "s/,/,\\n/g" %s) <(sed "s/,/,\\n/g" %s)\n' % (previous_path, new_path))
+        command_file_object.write('diff -u <(sed "s/,/,\\n/g" %s) <(sed "s/,/,\\n/g" %s)\n' % (previous_path, new_path_temp))
     filedata_parts = filedata.split('"revision"')
     assert(len(filedata_parts) == 2)
     new_file_data = '%s"revision":"%s"});' %(filedata_parts[0], newrevision)
@@ -42,12 +51,13 @@ def write_new_updated_result(oldrevision, newrevision, filedata, bot, old_file_n
     assert(len(newfiledata_parts) == 2)
     #print(filedata_parts[1])
     #print(newfiledata_parts[1])
-    destination_dir = os.path.dirname(new_path)
+    destination_dir = os.path.dirname(new_path_temp)
     if not os.path.isdir(destination_dir):
         os.makedirs(destination_dir)
-    assert(not os.path.isfile(new_path))
-    with open(new_path, "w") as newfile_handle:
+    assert(not os.path.isfile(new_path_temp))
+    with open(new_path_temp, "w") as newfile_handle:
         newfile_handle.write(new_file_data)
+    assert(not os.path.isfile(new_path_dest))
 
 
 def test_json_files_are_sanitized():
