@@ -43,6 +43,10 @@ urlencode () {
     python -c "import urllib; print urllib.quote(\"${@}\")"
 }
 
+urldecode () {
+    python -c "import urllib; print urllib.unquote(\"${@}\")"
+}
+
 print_revision_from_json_results () {
     python -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
 }
@@ -106,10 +110,11 @@ for webkitbot in "${webkitbots_values[@]}"; do
                 # python wktesthunter code assumes that the revision on the filename is right.
                 buildnum="$(echo ${resultsdir}| awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')"
                 revision="$(print_revision_from_json_results ${tempjsonresultfile})"
-                echo -n "r${revision}... "
                 # Sanity checks
                 echo "${buildnum}" | grep -Pq "^[0-9]+$" || fatal "Buildnum should be numeric and I got buildnum \"${buildnum}\" for ${downloadurl}"
-                echo "${revision}" | grep -Pq "^[0-9]+$" || fatal "Revision should be numeric and I got revision \"${revision}\" for ${downloadurl}"
+                [[ "${revision}" == "None" ]] && revision="$(urldecode ${resultsdir}|awk '{print $1}')"
+                echo "${revision}" | grep -Pq "^[0-9]+(@main)?$" || fatal "Revision should be numeric and I got revision \"${revision}\" for ${downloadurl}"
+                echo -n "r${revision}... "
                 mv "${tempjsonresultfile}" "full_results_r${revision}_b${buildnum}.json"
                 # store the resultsdir on the cache to not retry this download
                 echo -n ":"
