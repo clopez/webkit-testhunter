@@ -69,9 +69,9 @@ Note for lazy people:
 
 def interval_print(firstrev, lastrev, result, startcolor):
     if lastrev == None:
-        startstr=("r%d" %firstrev)
+        startstr=("%d@main" %firstrev)
     else:
-        startstr=("[r%d-r%d]" %(firstrev,lastrev))
+        startstr=("[%d@main-%d@main]" %(firstrev,lastrev))
 
     if startcolor != None:
         endcolor='\033[0m'
@@ -90,50 +90,15 @@ def get_percent_str(part, total):
 # TODO:
 # - get advantage of flakyhunter new code and move this to reuse as much of possible of that (or merge both search paths somehow)
 # - also implement checking history from git to show on the waterfall when a revision changed something (not only when the test was added)
-def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, checksvn, printprogress, botkey, processes, limit_to_last_n_results, reportsummary):
+def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, showexpected, usecolor, printprogress, botkey, processes, limit_to_last_n_results, reportsummary):
 
     start_at_revision = 1
     maybe_color = OptionalColorText(usecolor)
 
-    if checksvn:
-        try:
-            outsvn = None
-            errsvn = None
-            svnreturncode = None
-            svncmd = ["svn", "log", "-r" ,"1:HEAD", "--limit", "1",
-                      "https://svn.webkit.org/repository/webkit/trunk/LayoutTests/" + test ]
-            psvn = subprocess.Popen( svncmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE )
-            (outsvn, errsvn) = psvn.communicate()
-            svnreturncode = psvn.returncode
-            if svnreturncode == 0:
-                start_at_revision = outsvn.decode('utf8').splitlines()[1].split()[0]
-                revregex = re.compile("^r[0-9]+$")
-                if revregex.match(start_at_revision):
-                    start_at_revision = int(start_at_revision[1:])
-                    if start_at_revision > 1:
-                        print ("INFO: From svn.webkit.org got that %s added this test." %(maybe_color.bold(("r%d" % start_at_revision))))
-                else:
-                    raise ValueError
-            else:
-                raise ValueError
-        except (ValueError, FileNotFoundError) as error:
-            print ("Got an exception while trying to check the first revision for the test %s\n" %(test))
-            print ("Tried to run the following command: \"%s\"\n" %" ".join(svncmd))
-            if svnreturncode is None:
-                print ("Check that the program \"svn\" is installed.")
-            else:
-                print ("The return code was %d\n" % svnreturncode)
-                if outsvn is not None:
-                    print ("The standard output was:\n%s\n" % outsvn.decode('utf8'))
-                if errsvn is not None:
-                    print ("The standard error was:\n%s\n" % errsvn.decode('utf8'))
-            print ("Continuing without that information (assuming the first revision was r1)...\n\n")
-
-
-    results_parser = ResultsParser(botkey, processes, start_at_revision, limit_to_last_n_results, printprogress, debug)
+    results_parser = ResultsParser(botkey, processes, limit_to_last_n_results, printprogress, debug)
     startrev, minrev, maxrev, resultsfortests = results_parser.get_results_for_tests([test])
     print ('INFO: The revisions processed for the bot %s are on the interval %s' %
-           (maybe_color.bold(botkey), maybe_color.bold('[r%d-r%d]' %(startrev, maxrev))))
+           (maybe_color.bold(botkey), maybe_color.bold('[%d@main-%d@main]' %(startrev, maxrev))))
 
     lastprinted = UNKNOWN
     if mergeunknown:
@@ -180,7 +145,7 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
                     if revision-1 in resultsfortests[test]:
                         if ResultsInterpreter.is_result_for_test_unexpected(resultsfortests[test][revision-1]):
                             color = '\033[0;31m' # red
-                            if debug: print ('INFO: Marking test % as red on rev r%d, because actual result "%s" does not match the expectation "%s"'
+                            if debug: print ('INFO: Marking test % as red on rev %d@main, because actual result "%s" does not match the expectation "%s"'
                                         %(test, revision-1, resultsfortests[test][revision-1]['result'], resultsfortests[test][revision-1]['expected']))
 
                 if lastprinted != UNKNOWN or not ignoreunknown:
@@ -197,7 +162,7 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
         print ("The bot %s completed %s runs on the interval %s" % (
             maybe_color.bold(botkey),
             maybe_color.bold(number_of_completed_runs),
-            maybe_color.bold("[r%d-r%d]" % (minrev, maxrev))))
+            maybe_color.bold("[%d@main-%d@main]" % (minrev, maxrev))))
         number_of_failed_runs = len(failed_expectations)
         print ("Frecuency of results for test: %s" %(maybe_color.bold(test)))
         counted_test_results = Counter(test_results)
@@ -228,7 +193,6 @@ if __name__ == '__main__':
                                           "This option disregards --mergeunknown.\n", action="store_true")
     parser.add_argument("--noshowexpected", help="Print only the test results without the expected result.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
-    parser.add_argument("--nochecksvn", help="Don't query svn.webkit.org for the revision that added the test and assume it was r1.", action="store_true")
     parser.add_argument("--noprintprogress", help="Don't print percentage progress of computations..", action="store_true")
     parser.add_argument("--noreportsummary", help="Don't print the summary at the end with the result and expectations frequencies.", action="store_true")
     parser.add_argument("--bot", help="Check the test results for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
@@ -249,5 +213,5 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigterm_this_process)
     signal.signal(signal.SIGPIPE, sigterm_this_process)
     print_history_for_test(args.test_name, args.debug, not args.onlyprinterr, args.mergeunknown,
-                           args.ignoreunknown, not args.noshowexpected, not args.nocolor, not args.nochecksvn,
+                           args.ignoreunknown, not args.noshowexpected, not args.nocolor,
                            not args_should_printprogress, args.bot, args.j, args_limit_to_last_n_results, not args.noreportsummary)

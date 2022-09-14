@@ -12,13 +12,13 @@ from hunterpy.utils import OptionalColorText
 
 class ResultsParser():
 
-    def __init__(self, bot_name, number_of_process, start_at_revision=1, limit_to_last_n_results=None, print_progress=True, print_debug=False, use_color=True):
+    def __init__(self, bot_name, number_of_process, limit_to_last_n_results=None, print_progress=True, print_debug=False, use_color=True):
         self.bot_parsed_results = {}
         self.bot_key_name = bot_name
         self.number_of_process = number_of_process
         self.print_progress = print_progress
         self.print_debug = print_debug
-        self.start_at_revision = start_at_revision
+        self.start_at_revision = 1
         self.limit_to_last_n_results = limit_to_last_n_results
         self.maybe_color = OptionalColorText(use_color)
         #self.list_of_json_results_files = self._get_list_of_json_result_files()
@@ -36,11 +36,15 @@ class ResultsParser():
     def _get_revision_start_end(self, json_result_files):
         for jsonresult in json_result_files:
             if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-                rev_start = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
+                rev_start = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].rstrip("@main"))
                 break
         for jsonresult in json_result_files[::-1]:
             if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-                rev_end = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].strip("r"))
+                try:
+                    rev_end = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].rstrip("@main"))
+                except ValueError:
+                    print(jsonresult)
+                    raise
                 break
         if self.start_at_revision > rev_start:
             rev_start = self.start_at_revision
@@ -80,7 +84,7 @@ class ResultsParser():
 
     def _get_revision_and_buildnumber_for_result(self, result_file):
         revision, buildnumber = result_file.split('full_results_')[1].split('.json')[0].split('_')
-        revision = int(revision.strip('r'))
+        revision = int(revision.rstrip('@main'))
         buildnumber = int(buildnumber.strip('b'))
         return revision, buildnumber
 
@@ -102,9 +106,9 @@ class ResultsParser():
                     count = 1
                     percent_search += 1
                     if percent_search > 98 :
-                        self._write_progress_message('Searching: [r%s-r%s][%s] done' % (rev_start, rev_end, bot_name))
+                        self._write_progress_message('Searching: [%s@main-%s@main][%s] done' % (rev_start, rev_end, bot_name))
                     else:
-                        self._write_progress_message('Searching: [r%s-r%s][%s] %s%%' % ((rev_start, rev_end, bot_name, percent_search)))
+                        self._write_progress_message('Searching: [%s@main-%s@main][%s] %s%%' % ((rev_start, rev_end, bot_name, percent_search)))
 
             revision, buildnumber = self._get_revision_and_buildnumber_for_result(jsonresult)
 
@@ -237,7 +241,7 @@ class ResultsParser():
             json_result_files = self._get_sorted_list_of_jsonresults(bot_name)
             rev_start, rev_end = self._get_revision_start_end(json_result_files)
             if self.start_at_revision > rev_end:
-                if self.print_debug: print('Skipped bot: [r%s-r%s][%s] (SVN first searched revision great than last result for bot)' % (rev_start, rev_end, bot_name))
+                if self.print_debug: print('Skipped bot: [%s@main-%s@main][%s] (start_at_revision great than last result for bot)' % (rev_start, rev_end, bot_name))
                 continue
             if self.number_of_process == 1:
                 self._merge_results(self._search(tests_to_search, bot_name, json_result_files, self.print_progress))
@@ -258,9 +262,9 @@ class ResultsParser():
                     while True:
                         complete_count = sum(1 for x in results if x.ready())
                         if complete_count == self.number_of_process:
-                            self._write_progress_message('Searching: [r%s-r%s][%s] done' % (rev_start, rev_end, bot_name))
+                            self._write_progress_message('Searching: [%s@main-%s@main][%s] done' % (rev_start, rev_end, bot_name))
                             break
-                        self._write_progress_message('Searching: [r%s-r%s][%s] %s%%' %(rev_start, rev_end, bot_name, int(complete_count*100/self.number_of_process)))
+                        self._write_progress_message('Searching: [%s@main-%s@main][%s] %s%%' %(rev_start, rev_end, bot_name, int(complete_count*100/self.number_of_process)))
                         time.sleep(0.25)
                 pool.join()
                 for each in results:
@@ -277,7 +281,7 @@ class ResultsParser():
                 minrev, maxrev = keys[0], keys[len(keys) - 1]
                 startrev = max(minrev, self.start_at_revision)
                 if startrev > maxrev:
-                    raise RuntimeError('The starting revision r%d is great than the last revision with data r%d\nPlease fetch more data before continuing...' %(startrev, maxrev))
+                    raise RuntimeError('The starting revision %d@main is great than the last revision with data %d@main\nPlease fetch more data before continuing...' %(startrev, maxrev))
 
         return startrev, minrev, maxrev, self.bot_parsed_results
 
