@@ -112,10 +112,9 @@ for webkitbot in "${webkitbots_values[@]}"; do
                 revision="$(print_revision_from_json_results ${tempjsonresultfile})"
                 # Sanity checks
                 echo "${buildnum}" | grep -Pq "^[0-9]+$" || fatal "Buildnum should be numeric and I got buildnum \"${buildnum}\" for ${downloadurl}"
-                [[ "${revision}" == "None" ]] && revision="$(urldecode ${resultsdir}|awk '{print $1}')"
-                echo "${revision}" | grep -Pq "^[0-9]+(@main)?$" || fatal "Revision should be numeric and I got revision \"${revision}\" for ${downloadurl}"
-                echo -n "r${revision}... "
-                mv "${tempjsonresultfile}" "full_results_r${revision}_b${buildnum}.json"
+                echo "${revision}" | grep -Pq "^[0-9]+@main$" || fatal "Revision should be in the format: number@main and I got revision \"${revision}\" for ${downloadurl}"
+                echo -n "${revision}... "
+                mv "${tempjsonresultfile}" "full_results_${revision}_b${buildnum}.json"
                 # store the resultsdir on the cache to not retry this download
                 echo -n ":"
                 echo "${resultsdir}" >> "${alreadytried}"
