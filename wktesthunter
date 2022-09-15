@@ -169,7 +169,9 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
         for test_result in counted_test_results:
             print(maybe_color.bold("  {:<22} ->  {}".format("%d times [%s]" % (counted_test_results[test_result],get_percent_str(counted_test_results[test_result], number_of_completed_runs)), test_result)))
         print ("")
-        if number_of_failed_runs == 0:
+        if number_of_completed_runs == 0:
+            print(maybe_color.red("The bot didn't finished any run on the interval. Please try to raise the number of results to try with --depth 8000 (or more)"))
+        elif number_of_failed_runs == 0:
             print(maybe_color.green("All runs on the interval were sucessful (either the expectation was matched or the test passed"))
         else:
             print("Of those %s runs it didn't match the expectation %s times [%s]" % (maybe_color.bold(number_of_completed_runs), maybe_color.bold(number_of_failed_runs), maybe_color.bold(get_percent_str(number_of_failed_runs, number_of_completed_runs))))
