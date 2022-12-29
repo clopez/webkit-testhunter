@@ -51,6 +51,14 @@ print_revision_from_json_results () {
     python -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
 }
 
+json_result_test_has_revision_key () {
+    python -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'revision' in jd.keys() else 1; sys.exit(exit_code)"
+}
+
+json_result_test_run_was_interrupted () {
+    python -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'interrupted' in jd.keys() and jd['interrupted'] else 1; sys.exit(exit_code)"
+}
+
 fetch_bot_results () {
     local webkitbot="$1"
 
@@ -109,7 +117,24 @@ for webkitbot in "${webkitbots_values[@]}"; do
                 # Is important that the file in disk is stored as "r${revision}_b${buildnumber}" because the
                 # python wktesthunter code assumes that the revision on the filename is right.
                 buildnum="$(echo ${resultsdir}| awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')"
-                revision="$(print_revision_from_json_results ${tempjsonresultfile})"
+                if json_result_test_has_revision_key "${tempjsonresultfile}"; then
+                    revision="$(print_revision_from_json_results ${tempjsonresultfile})"
+                else
+                    # If the test run deadlocks then it may lack the revision in the json data.
+                    # Workaround the problem by guessing the revision number from the URL
+                    # But also ensure that the test is marked as interrupted in that case
+                    # See example:
+                    # Original URL http://build.webkit.org/results/WPE-Linux-64-bit-Debug-Tests/257598%40main%20%284216%29/full_results.json
+                    # Saved as: jsonresults/WPE-Linux-64-bit-Debug-Tests/full_results_257598@main_b4216.json
+                    # Logs: https://build.webkit.org/#/builders/14/builds/4216
+                    if json_result_test_run_was_interrupted "${tempjsonresultfile}"; then
+                        revision="$(urldecode $(echo ${resultsdir} | awk -F'%20' '{print $1}'))"
+                        echo -e "\nWARNING: Revision ${revision} guessed from the URL because it is not in the json data from ${downloadurl}"
+                    else
+                        echo -e "\FATAL: ${downloadurl} has no revision data and test run was not interrupted. This is unexpected."
+                        exit 1
+                    fi
+                fi
                 # Sanity checks
                 echo "${buildnum}" | grep -Pq "^[0-9]+$" || fatal "Buildnum should be numeric and I got buildnum \"${buildnum}\" for ${downloadurl}"
                 echo "${revision}" | grep -Pq "^[0-9]+@main$" || fatal "Revision should be in the format: number@main and I got revision \"${revision}\" for ${downloadurl}"
