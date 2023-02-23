@@ -192,7 +192,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             actual_results_for_tests[test].append(test_result)
             if test_result not in revisions_for_results_for_tests[test]:
                 revisions_for_results_for_tests[test][test_result] = []
-            revisions_for_results_for_tests[test][test_result].append("r%s" % revision)
+            revisions_for_results_for_tests[test][test_result].append("%s@main" % revision)
 
 
         assert(len(actual_results_for_tests[test]) == number_of_runs)
