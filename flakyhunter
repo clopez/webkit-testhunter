@@ -83,7 +83,7 @@ class LocalGitWebKitRepoInfoChecker():
             gitreturncode = pgit.returncode
             if gitreturncode == 0 and len(errgit) == 0:
                 if len(outgit) > 0:
-                    print ("[GIT] Detected test path %s modified inside TestExpectation files" % test_path)
+                    print ("# [GIT] Detected test path %s modified inside TestExpectation files" % test_path)
                     return True
 
             return False
@@ -204,6 +204,16 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             print("Skipping test %s because it has a flakiness factor of %s%% in the range [%d@main-%d@main] and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], start_rev, end_rev, args_flakiness))
             continue
 
+        different_result_for_test = set()
+        for result in actual_results_for_tests[test]:
+            for subresult in result.split(' '):
+                different_result_for_test.add(subresult)
+        if len(different_result_for_test) == 1 and list(different_result_for_test)[0] != "PASS":
+            print("Skipping test %s because it always gave the same result \"%s\" in the range [%d@main-%d@main]. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], start_rev, end_rev))
+            continue
+        # If there is only result but is pass we keep it to later print "Passing always in the range ... Please check further in the range and maybe remove expectations"
+        assert(len(different_result_for_test) > 1 or (len(different_result_for_test) == 1 and list(different_result_for_test)[0] == "PASS"))
+
         tests_to_check[test] = tests[test]
 
 
@@ -211,7 +221,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
     tests = tests_to_check
 
     if webkitdir:
-        print(maybe_color.bold("Getting info from git for %s tests in the revision range [%d@main-%d@main]. This can be slow, please wait." %(len(tests), start_rev, end_rev)))
+        print(maybe_color.bold("# Getting info from git for %s tests in the revision range [%d@main-%d@main]. This can be slow, please wait." %(len(tests), start_rev, end_rev)))
         local_git_webkit = LocalGitWebKitRepoInfoChecker(webkitdir)
         local_git_webkit.set_idrange_search(start_rev, end_rev)
         pool = multiprocessing.Pool(processes=processes)
@@ -222,7 +232,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
         for test in tests:
             id_test += 1
             if modified_tests_index_in_range[id_test]:
-                print("Skipping test %s because GIT reported modifications related to it in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
+                print("# Skipping test %s because GIT reported modifications related to it in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
                 continue
             tests_to_check[test] = tests[test]
         tests = tests_to_check
