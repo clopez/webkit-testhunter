@@ -36,6 +36,8 @@ class LocalGitWebKitRepoInfoChecker():
         curdir = os.getcwd()
         os.chdir(self.webkitdir)
         try:
+            # If the test has subtests use as path the main_file here. Also for searching the string into TestExpectations below.
+            test_path = test_path.split('?')[0]
             # First populate the array with the usual names, because the test or the expectation can have been removed so better to not rely on the file beeing stil there.
             paths_to_check = [ os.path.join('LayoutTests', test_path) ]
             suffix = test_path[test_path.rfind('.'):]
@@ -121,6 +123,30 @@ def calculate_flakiness_factor(results):
     return get_percent(flakiness_factor, len(results))
 
 
+def translate_individual_expectation(expectation):
+    assert(isinstance(expectation, str))
+    if expectation in ['FAIL', 'TEXT']: return 'Failure'
+    if expectation == 'TIMEOUT': return 'Timeout'
+    if expectation == 'PASS': return 'Pass'
+    if expectation == 'IMAGE': return 'ImageOnlyFailure'
+    if expectation == 'MISSING': return 'Missing'
+    if expectation == 'CRASH': return 'Crash'
+    if expectation == 'SKIP': return 'Skip'
+    raise NotImplementedError('Implement translation for expectation %s' % expectation)
+
+
+def get_str_translated_unique_expectations(expectations):
+    if isinstance(expectations, str):
+        expectations = [ expectations ]
+    assert(isinstance(expectations, list))
+    translated_expectations_set = set()
+    for test_result in expectations:
+        # subresults can be separated by spaces or '+'
+        for subresult in test_result.replace('+', ' ').split(' '):
+            translated_expectations_set.add(translate_individual_expectation(subresult))
+    return ' '.join(sorted(translated_expectations_set))
+
+
 def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, printprogress, args_min_percent, args_max_percent, args_flakiness, webkitdir):
 
     maybe_color = OptionalColorText(usecolor)
@@ -161,21 +187,21 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
                 number_of_unexpected_results += 1
 
         if expectations_changed:
-            print("Skipping test %s because the value of the expected results was modified in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
+            print("# Skipping test %s because the value of the expected results was modified in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
             continue
 
         if number_of_unexpected_results == 0:
-            print("Skipping test %s because all the results matched the expectation in range [%d@main-%d@main]" %(test, start_rev, end_rev))
+            print("# Skipping test %s because all the results matched the expectation in range [%d@main-%d@main]" %(test, start_rev, end_rev))
             continue
 
         percent_failed_expectation = get_percent(number_of_unexpected_results, number_of_runs)
         assert (percent_failed_expectation >= 0)
         assert (percent_failed_expectation <= 100)
         if percent_failed_expectation < args_min_percent :
-            print("Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --min is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_min_percent))
+            print("# Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --min is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_min_percent))
             continue
         if percent_failed_expectation > args_max_percent :
-            print("Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --max is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_max_percent))
+            print("# Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --max is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_max_percent))
             continue
 
 
@@ -199,18 +225,25 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
 
         assert(test not in flakiness_factor_for_tests)
 
-        flakiness_factor_for_tests[test] = calculate_flakiness_factor (actual_results_for_tests[test])
-        if args_flakiness > flakiness_factor_for_tests[test]:
-            print("Skipping test %s because it has a flakiness factor of %s%% in the range [%d@main-%d@main] and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], start_rev, end_rev, args_flakiness))
-            continue
-
+        test_always_passes = False
         different_result_for_test = set()
         for result in actual_results_for_tests[test]:
             for subresult in result.split(' '):
                 different_result_for_test.add(subresult)
-        if len(different_result_for_test) == 1 and list(different_result_for_test)[0] != "PASS":
-            print("Skipping test %s because it always gave the same result \"%s\" in the range [%d@main-%d@main]. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], start_rev, end_rev))
-            continue
+        if len(different_result_for_test) == 1:
+            if list(different_result_for_test)[0] == "PASS":
+                test_always_passes = True
+            else:
+                print("# Skipping test %s because it always gave the same result \"%s\" in the range [%d@main-%d@main]. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], start_rev, end_rev))
+                continue
+
+        flakiness_factor_for_tests[test] = calculate_flakiness_factor (actual_results_for_tests[test])
+        # Skip the test if test flakiness is lower than selected, but let always-pass tests so we can later tell which flaky expectations should be removed
+        if args_flakiness > flakiness_factor_for_tests[test]:
+            if not test_always_passes:
+                print("# Skipping test %s because it has a flakiness factor of %s%% in the range [%d@main-%d@main] and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], start_rev, end_rev, args_flakiness))
+                continue
+
         # If there is only result but is pass we keep it to later print "Passing always in the range ... Please check further in the range and maybe remove expectations"
         assert(len(different_result_for_test) > 1 or (len(different_result_for_test) == 1 and list(different_result_for_test)[0] == "PASS"))
 
@@ -257,7 +290,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             for result in actual_results_for_tests[test]:
                 for subresult in result.split(' '):
                     desired_expectations.add(subresult)
-            report_to_add_new_expectations_text += ("%s [ %s ]\n" %(maybe_color.bold(test), maybe_color.bold(' '.join(sorted(desired_expectations)))))
+            report_to_add_new_expectations_text += ("%s [ %s ]\n" %(maybe_color.bold(test), maybe_color.bold(get_str_translated_unique_expectations(sorted(desired_expectations)))))
             if flakiness_factor_for_tests[test] > 9:
                 report_to_add_new_expectations_text += maybe_color.red("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
             else:
@@ -280,8 +313,8 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             if list(desired_expectations) == ['PASS']:
                 report_to_modify_expectations_text +="\n%s\n#  Passing always in the range [%d@main-%d@main]. Please check further in the range and maybe remove expectations\n\n" %(maybe_color.bold(test), start_rev, end_rev)
                 continue
-            report_to_modify_expectations_text += maybe_color.red("-%s [ %s ]\n" %(test, expected_result_for_tests[test]))
-            report_to_modify_expectations_text += maybe_color.green("+%s [ %s ]\n" %(test, ' '.join(sorted(desired_expectations))))
+            report_to_modify_expectations_text += maybe_color.red("-%s [ %s ]\n" %(test, get_str_translated_unique_expectations(expected_result_for_tests[test])))
+            report_to_modify_expectations_text += maybe_color.green("+%s [ %s ]\n" %(test, get_str_translated_unique_expectations(sorted(desired_expectations))))
             if flakiness_factor_for_tests[test] > 9:
                 report_to_modify_expectations_text += maybe_color.red("# Flakiness factor: %s%%\n" % flakiness_factor_for_tests[test])
             else:
@@ -319,12 +352,12 @@ if __name__ == '__main__':
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--min", help="Only show tests with unexpected results higher than in MIN%% of the runs. Default is 10%%", type=float, default=10)
     parser.add_argument("--max", help="Don't show tests with unexpected results lower than in MAX%% of the runs. Default is 100%%", type=float, default=100)
-    parser.add_argument("--flakiness", help="Don't show tests with a flakiness factor lower than FLAKINESS%%. Flakiness factor is defined as the percent of times the result changed from one run to the next one. Default is 0%%", type=float, default=0)
+    parser.add_argument("--flakiness", help="Don't show tests with a flakiness factor lower than FLAKINESS%%. Flakiness factor is defined as the percent of times the result changed from one run to the next one. Default is 5%%", type=float, default=5)
     parser.add_argument("--webkitdir", help="Path to the local git repository of WebKit. Will enable checking local history to discard tests modified in the interval")
     parser.add_argument("--noprintprogress", help="Don't print percentage progress of computations..", action="store_true")
     parser.add_argument("--bot", help="Check the flakies for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
     parser.add_argument("-j", type=int, help="Number of processes to use. Default is the number of cores of this machine.", default=mp.cpu_count())
-    parser.add_argument('--depth', help='Search in only the last X revisions known for bot. Default is 10.', default=10)
+    parser.add_argument('--depth', help='Search in only the last X revisions known for bot. Default is 200.', default=200)
     args = parser.parse_args()
 
     if args.noprintprogress: args_printprogress = False
