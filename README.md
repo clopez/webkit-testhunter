@@ -13,6 +13,7 @@ The repository includes also the data from the bots that is updated daily.
 However, before running wktesthunter is always a good idea to update
 the json files.
 
+
 # Update the json files
 
  * Execute: `./fetch.sh` (or just git pull, there is a cronjob that does this daily
@@ -43,3 +44,22 @@ the json files.
   This makes the script to discard tests that modified on the interval
   checked.
 * Check `./flakyhunter -h` for additional help.
+
+
+# Check history of results older than a year
+
+Due to the continous grow of files some cleaning is done from time to time,
+otherwise too much disk space is wasted keeping files around that are hardly
+useful.
+
+At any moment you can expect to have available on the repo at least 1 year
+worth of data history.
+
+If you need to query data older than that you can resurrect the old results
+from the git history.
+
+The following commands will recover the history for you:
+
+* History older than `250000@main` (From Apr 2014 to 26th Apr 2022)
+  * Execute this command: ```git revert -n 4e4c323159641b2ed7004bb864f97c39c1f042d9```
+  * Note: needs 30GB **more** of disk space

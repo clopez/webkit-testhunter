@@ -58,7 +58,7 @@ class ResultsParser():
             for bot in bots[self.bot_key_name]:
                 bot_dir = os.path.join('jsonresults', bot) # fixme: use (readlink -f) with python trick to get an abs path
                 if not os.path.isdir(bot_dir):
-                    assert(False) # was continue ??
+                    continue
                 json_result_files = os.listdir(bot_dir)
                 json_result_files.sort()
                 rev_start, rev_end = self._get_revision_start_end(json_result_files)
@@ -178,6 +178,8 @@ class ResultsParser():
             failed_tests = {}
             revisions_with_runs = []
             for bot_name in bots[self.bot_key_name]:
+                if not self._bot_has_jsonresults(bot_name):
+                    continue
                 json_result_files = self._get_sorted_list_of_jsonresults(bot_name)
                 rev_start, rev_end = self._get_revision_start_end(json_result_files)
                 if rev_end > last_rev:
@@ -212,6 +214,16 @@ class ResultsParser():
     def get_list_of_tests_with_unexpected_results_at_revision(self, revision):
         raise NotImplementedError
 
+    def _bot_has_jsonresults(self, bot_name):
+        bot_dir = os.path.join('jsonresults', bot_name) # fixme: use (readlink -f) with python trick to get an abs path
+        if not os.path.isdir(bot_dir):
+            return False
+        json_result_files = []
+        for file in os.listdir(bot_dir):
+            if file.startswith('full_results_') and file.endswith('.json'):
+                return True
+        return False
+
     def _get_sorted_list_of_jsonresults(self, bot_name):
         bot_dir = os.path.join('jsonresults', bot_name) # fixme: use (readlink -f) with python trick to get an abs path
         assert(os.path.isdir(bot_dir))
@@ -238,6 +250,8 @@ class ResultsParser():
                 raise ValueError('Test should be in the format path/test.html. Only one test accepted as parameter (no wildcards or directories)')
 
         for bot_name in bots[self.bot_key_name]:
+            if not self._bot_has_jsonresults(bot_name):
+                continue
             json_result_files = self._get_sorted_list_of_jsonresults(bot_name)
             rev_start, rev_end = self._get_revision_start_end(json_result_files)
             if self.start_at_revision > rev_end:
