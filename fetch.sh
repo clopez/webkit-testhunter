@@ -10,9 +10,6 @@ declare -A webkitbots_map
 webkitbots_map=(
    ["gtk-release"]="GTK-Linux-64-bit-Release-Tests"
    ["gtk-debug"]="GTK-Linux-64-bit-Debug-Tests"
-   ["gtk-release-wayland"]="GTK-Linux-64-bit-Release-Wayland-Tests"
-   ["gtk-release-gtk4"]="GTK-Linux-64-bit-Release-GTK4-Tests"
-   ["gtk-release-skip-failing"]="GTK-Linux-64-bit-Release-Skip-Failing-Tests"
    ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
    ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
 )
