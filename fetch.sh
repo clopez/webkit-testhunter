@@ -35,23 +35,23 @@ usage () {
 }
 
 urlencode () {
-    python -c "import urllib; print urllib.quote(\"${@}\")"
+    python3 -c "import urllib.parse; print(urllib.parse.quote(\"${@}\"))"
 }
 
 urldecode () {
-    python -c "import urllib; print urllib.unquote(\"${@}\")"
+    python3 -c "import urllib.parse; print(urllib.parse.unquote(\"${@}\"))"
 }
 
 print_revision_from_json_results () {
-    python -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
+    python3 -c "import json, os; json_data=open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]; print(json.loads(json_data)['revision'])"
 }
 
 json_result_test_has_revision_key () {
-    python -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'revision' in jd.keys() else 1; sys.exit(exit_code)"
+    python3 -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'revision' in jd.keys() else 1; sys.exit(exit_code)"
 }
 
 json_result_test_run_was_interrupted () {
-    python -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'interrupted' in jd.keys() and jd['interrupted'] else 1; sys.exit(exit_code)"
+    python3 -c "import json, os, sys; jd=json.loads(open(\"${1}\").read().split('ADD_RESULTS(')[1].split(');')[0]); exit_code = 0 if 'interrupted' in jd.keys() and jd['interrupted'] else 1; sys.exit(exit_code)"
 }
 
 fetch_bot_results () {
