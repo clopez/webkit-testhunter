@@ -8,19 +8,9 @@ import multiprocessing
 
 from hunterpy.definitions import bots, NOERROR, UNKNOWN
 from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
-from hunterpy.utils import OptionalColorText, sigterm_this_process
+from hunterpy.utils import OptionalColorText, sigterm_this_process, get_percent, get_percent_str, calculate_flakiness_factor
 
 from collections import Counter
-
-
-def get_percent(part, total):
-    return float(100) * float(part) / float(total)
-
-
-def get_percent_str(part, total):
-    percent_part = get_percent(part, total)
-    return "%d%%" % int(percent_part) if percent_part.is_integer() else "%.1f%%" % percent_part
-
 
 
 class LocalGitWebKitRepoInfoChecker():
@@ -108,19 +98,6 @@ class LocalGitWebKitRepoInfoChecker():
     def set_idrange_search(self, start_rev, end_rev):
         self.start_git_rev = self.idrev_to_githash(start_rev)
         self.end_git_rev = self.idrev_to_githash(end_rev)
-
-
-def calculate_flakiness_factor(results):
-    flakiness_factor = 0
-    prev_result = results[0]
-    for result in results:
-        # If in a run it got two results means it was already flaky in that run
-        if ' ' in result:
-            flakiness_factor += 1
-        if result != prev_result:
-            flakiness_factor += 1
-        prev_result = result
-    return get_percent(flakiness_factor, len(results))
 
 
 def translate_individual_expectation(expectation):
@@ -237,7 +214,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
                 print("# Skipping test %s because it always gave the same result \"%s\" in the range [%d@main-%d@main]. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], start_rev, end_rev))
                 continue
 
-        flakiness_factor_for_tests[test] = calculate_flakiness_factor (actual_results_for_tests[test])
+        flakiness_factor_for_tests[test] = calculate_flakiness_factor(actual_results_for_tests[test])
         # Skip the test if test flakiness is lower than selected, but let always-pass tests so we can later tell which flaky expectations should be removed
         if args_flakiness > flakiness_factor_for_tests[test]:
             if not test_always_passes:
@@ -347,12 +324,14 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
 if __name__ == '__main__':
     import multiprocessing as mp
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--debug", help="Print debug messages.", action="store_true")
     parser.add_argument("--nocolor", help="Don't print colors", action="store_true")
     parser.add_argument("--min", help="Only show tests with unexpected results higher than in MIN%% of the runs. Default is 10%%", type=float, default=10)
     parser.add_argument("--max", help="Don't show tests with unexpected results lower than in MAX%% of the runs. Default is 100%%", type=float, default=100)
-    parser.add_argument("--flakiness", help="Don't show tests with a flakiness factor lower than FLAKINESS%%. Flakiness factor is defined as the percent of times the result changed from one run to the next one. Default is 5%%", type=float, default=5)
+    parser.add_argument("--flakiness", help="Don't show tests with a flakiness factor lower than FLAKINESS%%. Default is 5%%.\n"
+                                            "Flakiness factor is defined as the percentage of runs where the test was flaky, either giving\n"
+                                            "different results within a single run, or giving a different result than in the previous run.", type=float, default=5)
     parser.add_argument("--webkitdir", help="Path to the local git repository of WebKit. Will enable checking local history to discard tests modified in the interval")
     parser.add_argument("--noprintprogress", help="Don't print percentage progress of computations..", action="store_true")
     parser.add_argument("--bot", help="Check the flakies for a specific bot. Default is: %(default)s", choices=list(bots.keys()), default="gtk-release")
