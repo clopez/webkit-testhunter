@@ -16,9 +16,9 @@ the json files.
 
 # Update the json files
 
- * Execute: `./fetch.sh` (or just git pull, there is a cronjob that does this daily
-   and commits the result)
- * Is safe to ignore the warnings about revisions not available
+ * Execute: `./resync`
+ * When updating if it prints warnings about not beeing able to
+   fetch data for some revisions then is usually safe to ignore it.
    (probably that revisions failed to compile webkit, therefore
     there are no test results for them)
 
