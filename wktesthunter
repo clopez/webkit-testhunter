@@ -159,7 +159,7 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
             maybe_color.bold(number_of_completed_runs),
             maybe_color.bold("[%d@main-%d@main]" % (minrev, maxrev))))
         number_of_failed_runs = len(failed_expectations)
-        print ("Frecuency of results for test: %s" %(maybe_color.bold(test)))
+        print ("Frequency of results for test: %s" %(maybe_color.bold(test)))
         flakiness_factor = calculate_flakiness_factor(test_results)
         counted_test_results = Counter(test_results)
         for test_result in counted_test_results:
