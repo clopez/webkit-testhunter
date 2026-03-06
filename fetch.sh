@@ -12,6 +12,7 @@ webkitbots_map=(
    ["gtk-debug"]="GTK-Linux-64-bit-Debug-Tests"
    ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
    ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
+   ["wpe-arm64-release"]="WPE-Linux-ARM64-bit-Release-Tests"
 )
 
 webkitbots_values=("${webkitbots_map[@]}")

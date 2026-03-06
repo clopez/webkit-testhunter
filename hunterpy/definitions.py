@@ -5,5 +5,6 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
     'gtk-release' : ["GTK-Linux-64-bit-Release", "GTK-Linux-64-bit-Release-WK2-Tests", "GTK-Linux-64-bit-Release-Tests"],
     'gtk-debug' : ["GTK-Linux-64-bit-Debug-Tests"],
     'wpe-release' : ["WPE-Linux-64-bit-Release-Tests"],
-    'wpe-debug' : ["WPE-Linux-64-bit-Debug-Tests"]
+    'wpe-debug' : ["WPE-Linux-64-bit-Debug-Tests"],
+    'wpe-arm64-release' : ["WPE-Linux-ARM64-bit-Release-Tests"]
 }
