@@ -186,7 +186,12 @@ class ResultsParser():
                     last_rev = rev_end
                     last_bot = bot_name
                     last_json_result_files = json_result_files
-            assert(len(last_json_result_files) > number_of_last_n_results_to_check)
+            # If fewer runs are available than requested (common for a new bot),
+            # just analyze all of them instead of failing.
+            if number_of_last_n_results_to_check >= len(last_json_result_files):
+                print('INFO: Requested %d runs but bot %s only has %d available; analyzing all of them.'
+                      % (number_of_last_n_results_to_check, self.bot_key_name, len(last_json_result_files)))
+                number_of_last_n_results_to_check = len(last_json_result_files)
 
             for result in reversed(last_json_result_files):
                 revision, buildnumber = self._get_revision_and_buildnumber_for_result(result)
