@@ -6,7 +6,7 @@ import sys
 import os
 import multiprocessing
 
-from hunterpy.definitions import bots, NOERROR, UNKNOWN, format_revision, format_interval
+from hunterpy.definitions import bots, NOERROR, UNKNOWN, format_revision, format_interval, is_branch_bot
 from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
 from hunterpy.utils import OptionalColorText, sigterm_this_process, get_percent, get_percent_str, calculate_flakiness_factor
 
@@ -127,6 +127,12 @@ def get_str_translated_unique_expectations(expectations):
 def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, printprogress, args_min_percent, args_max_percent, args_flakiness, webkitdir):
 
     maybe_color = OptionalColorText(usecolor)
+
+    if webkitdir and is_branch_bot(bot_key_name):
+        raise SystemExit(maybe_color.red(
+            "ERROR: --webkitdir is not yet supported for the stable-branch bot '%s'.\n"
+            "The git history lookups (canonical-link identifiers and modified-file detection)\n"
+            "assume the trunk (@main) branch. Please re-run without --webkitdir for this bot." % bot_key_name))
 
     print("Analyzing test results for the last %s runs of the bot %s..." %(number_of_runs, bot_key_name))
     if 'skip-failing' in bot_key_name:
