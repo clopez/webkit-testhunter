@@ -6,7 +6,7 @@ import sys
 import os
 import multiprocessing
 
-from hunterpy.definitions import bots, NOERROR, UNKNOWN
+from hunterpy.definitions import bots, NOERROR, UNKNOWN, format_revision, format_interval
 from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
 from hunterpy.utils import OptionalColorText, sigterm_this_process, get_percent, get_percent_str, calculate_flakiness_factor
 
@@ -142,7 +142,8 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
     start_rev = int(revisions_with_runs[0])
     end_rev = int(revisions_with_runs[-1])
     assert (len(revisions_with_runs) == number_of_runs)
-    print("Got %s test results for %s runs  in the range [%d@main-%d@main]" %(len(tests), number_of_runs, start_rev, end_rev))
+    interval_str = format_interval(start_rev, end_rev, bot_key_name)
+    print("Got %s test results for %s runs  in the range %s" %(len(tests), number_of_runs, interval_str))
 
 
     initial_number_tests = len(tests)
@@ -167,21 +168,21 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
                 number_of_unexpected_results += 1
 
         if expectations_changed:
-            print("# Skipping test %s because the value of the expected results was modified in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
+            print("# Skipping test %s because the value of the expected results was modified in the range %s" %(test, interval_str))
             continue
 
         if number_of_unexpected_results == 0:
-            print("# Skipping test %s because all the results matched the expectation in range [%d@main-%d@main]" %(test, start_rev, end_rev))
+            print("# Skipping test %s because all the results matched the expectation in range %s" %(test, interval_str))
             continue
 
         percent_failed_expectation = get_percent(number_of_unexpected_results, number_of_runs)
         assert (percent_failed_expectation >= 0)
         assert (percent_failed_expectation <= 100)
         if percent_failed_expectation < args_min_percent :
-            print("# Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --min is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_min_percent))
+            print("# Skipping test %s because it failed %s%% times in the range %s and --min is %s%%" %(test, percent_failed_expectation, interval_str, args_min_percent))
             continue
         if percent_failed_expectation > args_max_percent :
-            print("# Skipping test %s because it failed %s%% times in the range [%d@main-%d@main] and --max is %s%%" %(test, percent_failed_expectation, start_rev, end_rev, args_max_percent))
+            print("# Skipping test %s because it failed %s%% times in the range %s and --max is %s%%" %(test, percent_failed_expectation, interval_str, args_max_percent))
             continue
 
 
@@ -198,7 +199,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             actual_results_for_tests[test].append(test_result)
             if test_result not in revisions_for_results_for_tests[test]:
                 revisions_for_results_for_tests[test][test_result] = []
-            revisions_for_results_for_tests[test][test_result].append("%s@main" % revision)
+            revisions_for_results_for_tests[test][test_result].append(format_revision(revision, bot_key_name))
 
 
         assert(len(actual_results_for_tests[test]) == number_of_runs)
@@ -214,14 +215,14 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
             if list(different_result_for_test)[0] == "PASS":
                 test_always_passes = True
             else:
-                print("# Skipping test %s because it always gave the same result \"%s\" in the range [%d@main-%d@main]. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], start_rev, end_rev))
+                print("# Skipping test %s because it always gave the same result \"%s\" in the range %s. This is a constant failure and not a flaky" %(test, list(different_result_for_test)[0], interval_str))
                 continue
 
         flakiness_factor_for_tests[test] = calculate_flakiness_factor(actual_results_for_tests[test])
         # Skip the test if test flakiness is lower than selected, but let always-pass tests so we can later tell which flaky expectations should be removed
         if args_flakiness > flakiness_factor_for_tests[test]:
             if not test_always_passes:
-                print("# Skipping test %s because it has a flakiness factor of %s%% in the range [%d@main-%d@main] and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], start_rev, end_rev, args_flakiness))
+                print("# Skipping test %s because it has a flakiness factor of %s%% in the range %s and --flakiness is %s%%" %(test, flakiness_factor_for_tests[test], interval_str, args_flakiness))
                 continue
 
         # If there is only result but is pass we keep it to later print "Passing always in the range ... Please check further in the range and maybe remove expectations"
@@ -234,7 +235,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
     tests = tests_to_check
 
     if webkitdir:
-        print(maybe_color.bold("# Getting info from git for %s tests in the revision range [%d@main-%d@main]. This can be slow, please wait." %(len(tests), start_rev, end_rev)))
+        print(maybe_color.bold("# Getting info from git for %s tests in the revision range %s. This can be slow, please wait." %(len(tests), interval_str)))
         local_git_webkit = LocalGitWebKitRepoInfoChecker(webkitdir)
         local_git_webkit.set_idrange_search(start_rev, end_rev)
         pool = multiprocessing.Pool(processes=processes)
@@ -245,16 +246,16 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
         for test in tests:
             id_test += 1
             if modified_tests_index_in_range[id_test]:
-                print("# Skipping test %s because GIT reported modifications related to it in the range [%d@main-%d@main]" %(test, start_rev, end_rev))
+                print("# Skipping test %s because GIT reported modifications related to it in the range %s" %(test, interval_str))
                 continue
             tests_to_check[test] = tests[test]
         tests = tests_to_check
     else:
         modified_tests_index_in_range = [ False for test in tests ]
-        print(maybe_color.red("No gathering info about modified tests in the revision range [%d@main-%d@main]. Results will be less fiable. Please pass --webkitdir /path/to/webkit/gitrepo to enable." %(start_rev, end_rev)))
+        print(maybe_color.red("No gathering info about modified tests in the revision range %s. Results will be less fiable. Please pass --webkitdir /path/to/webkit/gitrepo to enable." % interval_str))
 
 
-    print(maybe_color.bold("Reporting %s tests with unexpected results from an initial set of %s tests for %s runs in the interval [%d@main-%d@main]" %(len(tests), initial_number_tests, number_of_runs, start_rev, end_rev)))
+    print(maybe_color.bold("Reporting %s tests with unexpected results from an initial set of %s tests for %s runs in the interval %s" %(len(tests), initial_number_tests, number_of_runs, interval_str)))
     report_to_add_new_expectations_text = ""
     report_to_modify_expectations_text = ""
     number_of_expectations_to_add = 0
@@ -291,7 +292,7 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
                 for subresult in result.split(' '):
                     desired_expectations.add(subresult.strip())
             if list(desired_expectations) == ['PASS']:
-                report_to_modify_expectations_text +="\n%s\n#  Passing always in the range [%d@main-%d@main]. Please check further in the range and maybe remove expectations\n\n" %(maybe_color.bold(test), start_rev, end_rev)
+                report_to_modify_expectations_text +="\n%s\n#  Passing always in the range %s. Please check further in the range and maybe remove expectations\n\n" %(maybe_color.bold(test), interval_str)
                 continue
             report_to_modify_expectations_text += maybe_color.red("-%s [ %s ]\n" %(test, get_str_translated_unique_expectations(expected_result_for_tests[test])))
             report_to_modify_expectations_text += maybe_color.green("+%s [ %s ]\n" %(test, get_str_translated_unique_expectations(sorted(desired_expectations))))
