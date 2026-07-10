@@ -6,7 +6,8 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
     'gtk-debug' : ["GTK-Linux-64-bit-Debug-Tests"],
     'wpe-release' : ["WPE-Linux-64-bit-Release-Tests"],
     'wpe-debug' : ["WPE-Linux-64-bit-Debug-Tests"],
-    'wpe-arm64-release' : ["WPE-Linux-ARM64-bit-Release-Tests"]
+    'wpe-arm64-release' : ["WPE-Linux-ARM64-bit-Release-Tests"],
+    'wpe-arm64-252-release' : ["WPE-Linux-ARM64-bit-Release-v252-BuildAndTest"]
 }
 
 # Revision namespace per bot.
@@ -23,6 +24,7 @@ bots = { # The reason to have more than one entry per bot is that some bots wher
 _DEFAULT_BRANCH_INFO = {'branch': 'main', 'base': None, 'version': None, 'nested_build_dir': False}
 
 bot_revision_info = {
+    'wpe-arm64-252-release' : {'branch': 'webkitglib', 'base': 305877, 'version': '2.52', 'nested_build_dir': True},
 }
 
 

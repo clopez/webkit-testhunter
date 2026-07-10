@@ -13,6 +13,17 @@ webkitbots_map=(
    ["wpe-release"]="WPE-Linux-64-bit-Release-Tests"
    ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
    ["wpe-arm64-release"]="WPE-Linux-ARM64-bit-Release-Tests"
+   ["wpe-arm64-252-release"]="WPE-Linux-ARM64-bit-Release-v252-BuildAndTest"
+)
+
+# Bots that track a WebKit stable branch store their results one directory level
+# deeper than the trunk bots: each "<base>.<seq>@<branch>/" result directory
+# contains a single "<version> (<build>)/" subdir with the full_results.json, and
+# the revision identifier is "<base>.<seq>@<branch>" (not "<N>@main"). The value
+# below is the branch name used to validate the revision (e.g. "webkitglib").
+declare -A webkitbots_branch
+webkitbots_branch=(
+   ["WPE-Linux-ARM64-bit-Release-v252-BuildAndTest"]="webkitglib"
 )
 
 webkitbots_values=("${webkitbots_map[@]}")
@@ -98,22 +109,44 @@ for webkitbot in "${webkitbots_values[@]}"; do
         echo -e "\nFetching results for bot: ${webkitbot}"
     fi
     test -f "${alreadytried}" || touch "${alreadytried}"
+    branch_flavor="${webkitbots_branch[$webkitbot]:-}"
     tempjsonresultfile="$(mktemp)"
     webkitbot="$(urlencode "${webkitbot}")"
     fetch_bot_results "$webkitbot" | while read resultsdir; do
-        downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${resultsdir}full_results.json"
+        # These are computed lazily (once, only when we actually need to download)
+        # so that we don't pay an extra request per already-fetched directory.
+        downloadurl=""
+        buildnum_src="${resultsdir}"
+        revision_override=""
         tries=1
         while true; do
             if grep -qx "${resultsdir}" "${alreadytried}"; then
                 echo -n "."
                 break
             fi
+            if [[ -z "${downloadurl}" ]]; then
+                if [[ -n "${branch_flavor}" ]]; then
+                    # Stable-branch bot: descend into the single "<version> (<build>)/"
+                    # subdir. The build number lives there, and the revision comes from
+                    # the result directory name (the JSON revision carries a trailing
+                    # "/<version>" that can't be part of a filename).
+                    builddir="$(fetch_bot_results "${webkitbot}/${resultsdir%/}" | head -n1)"
+                    downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${resultsdir}${builddir}full_results.json"
+                    buildnum_src="${builddir}"
+                    revision_override="$(urldecode "${resultsdir%/}")"
+                else
+                    downloadurl="${WEBKIT_RESULTS_URL}/${webkitbot}/${resultsdir}full_results.json"
+                fi
+            fi
             if test -f "${tempjsonresultfile}" && grep -qP "^ADD_RESULTS\(.*\);$" "${tempjsonresultfile}" ; then
                 # Get the revision number from the json data and move the file to its place.
                 # Is important that the file in disk is stored as "r${revision}_b${buildnumber}" because the
                 # python wktesthunter code assumes that the revision on the filename is right.
-                buildnum="$(echo ${resultsdir}| awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')"
-                if json_result_test_has_revision_key "${tempjsonresultfile}"; then
+                buildnum="$(echo ${buildnum_src}| awk -F'%28' '{print $2}'|awk -F'%29' '{print $1}')"
+                if [[ -n "${revision_override}" ]]; then
+                    # Stable-branch bot: the directory name is the authoritative revision.
+                    revision="${revision_override}"
+                elif json_result_test_has_revision_key "${tempjsonresultfile}"; then
                     revision="$(print_revision_from_json_results ${tempjsonresultfile})"
                 else
                     # If the test run deadlocks then it may lack the revision in the json data.
@@ -133,7 +166,11 @@ for webkitbot in "${webkitbots_values[@]}"; do
                 fi
                 # Sanity checks
                 echo "${buildnum}" | grep -Pq "^[0-9]+$" || fatal "Buildnum should be numeric and I got buildnum \"${buildnum}\" for ${downloadurl}"
-                echo "${revision}" | grep -Pq "^[0-9]+@main$" || fatal "Revision should be in the format: number@main and I got revision \"${revision}\" for ${downloadurl}"
+                if [[ -n "${branch_flavor}" ]]; then
+                    echo "${revision}" | grep -Pq "^[0-9]+\.[0-9]+@${branch_flavor}$" || fatal "Revision should be in the format: number.number@${branch_flavor} and I got revision \"${revision}\" for ${downloadurl}"
+                else
+                    echo "${revision}" | grep -Pq "^[0-9]+@main$" || fatal "Revision should be in the format: number@main and I got revision \"${revision}\" for ${downloadurl}"
+                fi
                 echo -n "${revision}... "
                 mv "${tempjsonresultfile}" "full_results_${revision}_b${buildnum}.json"
                 # store the resultsdir on the cache to not retry this download
