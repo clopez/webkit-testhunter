@@ -136,6 +136,9 @@ def flaky_hunter(bot_key_name, number_of_runs, processes, debug, usecolor, print
 
 
     revisions_with_runs, tests = results_parser.get_list_of_failed_tests_at_last_n_runs(number_of_runs)
+    # The number of runs actually available may be lower than requested (clamped
+    # inside get_list_of_failed_tests_at_last_n_runs), so use the real count.
+    number_of_runs = len(revisions_with_runs)
     start_rev = int(revisions_with_runs[0])
     end_rev = int(revisions_with_runs[-1])
     assert (len(revisions_with_runs) == number_of_runs)
