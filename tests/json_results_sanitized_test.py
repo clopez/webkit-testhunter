@@ -28,8 +28,13 @@ def test_json_files_are_sanitized():
                 except:
                     raise Exception ('WARNING: Exception parsing file: %s ' % json_file_path)
 
-                # Check that revision on filename matches revision on json data
-                if json_parsed['revision'] != revision_from_filename or len(revision_from_filename) < 8 or not revision_from_filename.endswith('@main'):
+                # Check that revision on filename matches revision on json data.
+                # Trunk bots use "<N>@main". Stable-branch bots use
+                # "<base>.<seq>@<branch>/<version>" in the JSON, but the trailing
+                # "/<version>" can't live in a filename so it is stripped there;
+                # compare against the JSON revision with that suffix removed.
+                json_revision_core = json_parsed['revision'].split('/')[0]
+                if json_revision_core != revision_from_filename or len(revision_from_filename) < 8 or '@' not in revision_from_filename:
                     raise ValueError ('WARNING: Parsed revision %s is different than expected one %s for file %s'
                                      %(json_parsed['revision'], revision_from_filename, json_file_path))
 

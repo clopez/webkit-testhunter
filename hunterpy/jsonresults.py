@@ -6,7 +6,7 @@ import time
 from collections import OrderedDict
 from multiprocessing import Pool
 
-from hunterpy.definitions import bots, NOERROR, UNKNOWN
+from hunterpy.definitions import bots, NOERROR, UNKNOWN, revision_seq_from_id, revision_seq_from_filename, format_interval, format_revision
 from hunterpy.utils import OptionalColorText
 
 
@@ -36,12 +36,12 @@ class ResultsParser():
     def _get_revision_start_end(self, json_result_files):
         for jsonresult in json_result_files:
             if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
-                rev_start = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].rstrip("@main"))
+                rev_start = revision_seq_from_filename(jsonresult)
                 break
         for jsonresult in json_result_files[::-1]:
             if jsonresult.startswith("full_results_") and jsonresult.endswith('.json'):
                 try:
-                    rev_end = int(jsonresult.split("full_results_")[1].split(".json")[0].split('_')[0].rstrip("@main"))
+                    rev_end = revision_seq_from_filename(jsonresult)
                 except ValueError:
                     print(jsonresult)
                     raise
@@ -60,7 +60,9 @@ class ResultsParser():
                 if not os.path.isdir(bot_dir):
                     continue
                 json_result_files = os.listdir(bot_dir)
-                json_result_files.sort()
+                # os.listdir also returns non-result files (e.g. .cache_already_tried);
+                # sort them first (-1) so they don't interfere with start/end detection.
+                json_result_files.sort(key=lambda f: revision_seq_from_filename(f) if f.startswith("full_results_") and f.endswith('.json') else -1)
                 rev_start, rev_end = self._get_revision_start_end(json_result_files)
                 if rev_end > max_rev:
                     max_rev = rev_end
@@ -84,7 +86,7 @@ class ResultsParser():
 
     def _get_revision_and_buildnumber_for_result(self, result_file):
         revision, buildnumber = result_file.split('full_results_')[1].split('.json')[0].split('_')
-        revision = int(revision.rstrip('@main'))
+        revision = revision_seq_from_id(revision)
         buildnumber = int(buildnumber.strip('b'))
         return revision, buildnumber
 
@@ -106,9 +108,9 @@ class ResultsParser():
                     count = 1
                     percent_search += 1
                     if percent_search > 98 :
-                        self._write_progress_message('Searching: [%s@main-%s@main][%s] done' % (rev_start, rev_end, bot_name))
+                        self._write_progress_message('Searching: %s[%s] done' % (format_interval(rev_start, rev_end, self.bot_key_name), bot_name))
                     else:
-                        self._write_progress_message('Searching: [%s@main-%s@main][%s] %s%%' % ((rev_start, rev_end, bot_name, percent_search)))
+                        self._write_progress_message('Searching: %s[%s] %s%%' % (format_interval(rev_start, rev_end, self.bot_key_name), bot_name, percent_search))
 
             revision, buildnumber = self._get_revision_and_buildnumber_for_result(jsonresult)
 
@@ -236,7 +238,7 @@ class ResultsParser():
         for file in os.listdir(bot_dir):
             if file.startswith('full_results_') and file.endswith('.json'):
                 json_result_files.append(file)
-        json_result_files.sort()
+        json_result_files.sort(key=revision_seq_from_filename)
         assert(len(json_result_files) > 1)
         return json_result_files
 
@@ -260,7 +262,7 @@ class ResultsParser():
             json_result_files = self._get_sorted_list_of_jsonresults(bot_name)
             rev_start, rev_end = self._get_revision_start_end(json_result_files)
             if self.start_at_revision > rev_end:
-                if self.print_debug: print('Skipped bot: [%s@main-%s@main][%s] (start_at_revision great than last result for bot)' % (rev_start, rev_end, bot_name))
+                if self.print_debug: print('Skipped bot: %s[%s] (start_at_revision great than last result for bot)' % (format_interval(rev_start, rev_end, self.bot_key_name), bot_name))
                 continue
             if self.number_of_process == 1:
                 self._merge_results(self._search(tests_to_search, bot_name, json_result_files, self.print_progress))
@@ -281,9 +283,9 @@ class ResultsParser():
                     while True:
                         complete_count = sum(1 for x in results if x.ready())
                         if complete_count == self.number_of_process:
-                            self._write_progress_message('Searching: [%s@main-%s@main][%s] done' % (rev_start, rev_end, bot_name))
+                            self._write_progress_message('Searching: %s[%s] done' % (format_interval(rev_start, rev_end, self.bot_key_name), bot_name))
                             break
-                        self._write_progress_message('Searching: [%s@main-%s@main][%s] %s%%' %(rev_start, rev_end, bot_name, int(complete_count*100/self.number_of_process)))
+                        self._write_progress_message('Searching: %s[%s] %s%%' %(format_interval(rev_start, rev_end, self.bot_key_name), bot_name, int(complete_count*100/self.number_of_process)))
                         time.sleep(0.25)
                 pool.join()
                 for each in results:
@@ -300,7 +302,7 @@ class ResultsParser():
                 minrev, maxrev = keys[0], keys[len(keys) - 1]
                 startrev = max(minrev, self.start_at_revision)
                 if startrev > maxrev:
-                    raise RuntimeError('The starting revision %d@main is great than the last revision with data %d@main\nPlease fetch more data before continuing...' %(startrev, maxrev))
+                    raise RuntimeError('The starting revision %s is great than the last revision with data %s\nPlease fetch more data before continuing...' %(format_revision(startrev, self.bot_key_name), format_revision(maxrev, self.bot_key_name)))
 
         return startrev, minrev, maxrev, self.bot_parsed_results
 

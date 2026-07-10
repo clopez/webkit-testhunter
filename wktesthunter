@@ -9,7 +9,7 @@ import signal
 
 from collections import Counter
 
-from hunterpy.definitions import bots, NOERROR, UNKNOWN
+from hunterpy.definitions import bots, NOERROR, UNKNOWN, format_revision, format_interval
 from hunterpy.jsonresults import ResultsInterpreter, ResultsParser
 from hunterpy.utils import OptionalColorText, sigterm_this_process, get_percent_str, calculate_flakiness_factor
 
@@ -67,11 +67,11 @@ Note for lazy people:
 
 
 
-def interval_print(firstrev, lastrev, result, startcolor):
+def interval_print(firstrev, lastrev, result, startcolor, botkey, column):
     if lastrev == None:
-        startstr=("%d@main" %firstrev)
+        startstr=format_revision(firstrev, botkey)
     else:
-        startstr=("[%d@main-%d@main]" %(firstrev,lastrev))
+        startstr=format_interval(firstrev, lastrev, botkey)
 
     if startcolor != None:
         endcolor='\033[0m'
@@ -79,7 +79,7 @@ def interval_print(firstrev, lastrev, result, startcolor):
         endcolor=''
         startcolor=''
 
-    print('%s%s%s%s%s' %(startcolor,startstr," "*(30-len(startstr)),result,endcolor))
+    print('%s%s%s%s%s' %(startcolor,startstr," "*max(1, column-len(startstr)),result,endcolor))
 
 
 # TODO:
@@ -93,7 +93,14 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
     results_parser = ResultsParser(botkey, processes, limit_to_last_n_results, printprogress, debug)
     startrev, minrev, maxrev, resultsfortests = results_parser.get_results_for_tests([test])
     print ('INFO: The revisions processed for the bot %s are on the interval %s' %
-           (maybe_color.bold(botkey), maybe_color.bold('[%d@main-%d@main]' %(startrev, maxrev))))
+           (maybe_color.bold(botkey), maybe_color.bold(format_interval(startrev, maxrev, botkey))))
+
+    # Column where the results are printed. The widest revision string that this
+    # loop can print is an interval with the highest revision on both ends, so
+    # that plus a separating space is enough for everything to line up. Keep the
+    # historic width of 30 as minimum, so the output of the @main bots (whose
+    # identifiers are way shorter) doesn't change.
+    column = max(30, len(format_interval(maxrev, maxrev, botkey)) + 1)
 
     lastprinted = UNKNOWN
     if mergeunknown:
@@ -140,15 +147,15 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
                     if revision-1 in resultsfortests[test]:
                         if ResultsInterpreter.is_result_for_test_unexpected(resultsfortests[test][revision-1]):
                             color = '\033[0;31m' # red
-                            if debug: print ('INFO: Marking test % as red on rev %d@main, because actual result "%s" does not match the expectation "%s"'
-                                        %(test, revision-1, resultsfortests[test][revision-1]['result'], resultsfortests[test][revision-1]['expected']))
+                            if debug: print ('INFO: Marking test % as red on rev %s, because actual result "%s" does not match the expectation "%s"'
+                                        %(test, format_revision(revision-1, botkey), resultsfortests[test][revision-1]['result'], resultsfortests[test][revision-1]['expected']))
 
                 if lastprinted != UNKNOWN or not ignoreunknown:
                     if revision > startrev:
                         if revision-lastrevprinted > 2:
-                            interval_print (lastrevprinted+1, revision-1, lastprinted, color)
+                            interval_print (lastrevprinted+1, revision-1, lastprinted, color, botkey, column)
                         else:
-                            interval_print (revision-1, None, lastprinted, color)
+                            interval_print (revision-1, None, lastprinted, color, botkey, column)
             lastrevprinted = revision-1
             lastprinted = toprint
     print("\n")
@@ -157,7 +164,7 @@ def print_history_for_test(test, debug, detail, mergeunknown, ignoreunknown, sho
         print ("The bot %s completed %s runs on the interval %s" % (
             maybe_color.bold(botkey),
             maybe_color.bold(number_of_completed_runs),
-            maybe_color.bold("[%d@main-%d@main]" % (minrev, maxrev))))
+            maybe_color.bold(format_interval(minrev, maxrev, botkey))))
         number_of_failed_runs = len(failed_expectations)
         print ("Frequency of results for test: %s" %(maybe_color.bold(test)))
         flakiness_factor = calculate_flakiness_factor(test_results)
