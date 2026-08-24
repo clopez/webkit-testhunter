@@ -113,6 +113,14 @@ for webkitbot in "${webkitbots_values[@]}"; do
     tempjsonresultfile="$(mktemp)"
     webkitbot="$(urlencode "${webkitbot}")"
     fetch_bot_results "$webkitbot" | while read resultsdir; do
+        if [[ -n "${branch_flavor}" ]] && ! [[ "${resultsdir}" =~ ^[0-9]+\.[0-9]+(@|%40)${branch_flavor}/?$ ]]; then
+            # Result directories of a stable-branch bot that don't carry a
+            # "<base>.<seq>@<branch>" identifier are from the builds made before the
+            # bot was switched over to the branch (they are plain "<N>@main" runs at
+            # the branch point). They live in the trunk revision namespace, so mixing
+            # them with the branch sequence would break the revision ordering: ignore.
+            continue
+        fi
         # These are computed lazily (once, only when we actually need to download)
         # so that we don't pay an extra request per already-fetched directory.
         downloadurl=""
