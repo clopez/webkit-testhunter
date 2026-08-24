@@ -14,6 +14,7 @@ webkitbots_map=(
    ["wpe-debug"]="WPE-Linux-64-bit-Debug-Tests"
    ["wpe-arm64-release"]="WPE-Linux-ARM64-bit-Release-Tests"
    ["wpe-arm64-252-release"]="WPE-Linux-ARM64-bit-Release-v252-BuildAndTest"
+   ["wpe-arm64-254-release"]="WPE-Linux-ARM64-bit-Release-v254-BuildAndTest"
 )
 
 # Bots that track a WebKit stable branch store their results one directory level
@@ -24,6 +25,7 @@ webkitbots_map=(
 declare -A webkitbots_branch
 webkitbots_branch=(
    ["WPE-Linux-ARM64-bit-Release-v252-BuildAndTest"]="webkitglib"
+   ["WPE-Linux-ARM64-bit-Release-v254-BuildAndTest"]="webkitglib"
 )
 
 webkitbots_values=("${webkitbots_map[@]}")
