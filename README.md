@@ -60,6 +60,9 @@ from the git history.
 
 The following commands will recover the history for you:
 
+* History From `250000@main` to `300000@main' (From 26th Apr 2022 to 15th Sep 2025)
+  * Execute this command: ```git revert -n 2aec96e2df4498b52d28367d6c9dad8fd5fc7db2```
+  * Note: needs 32GB **more** of disk space
 * History older than `250000@main` (From Apr 2014 to 26th Apr 2022)
   * Execute this command: ```git revert -n 4e4c323159641b2ed7004bb864f97c39c1f042d9```
   * Note: needs 30GB **more** of disk space
